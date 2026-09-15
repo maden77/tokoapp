@@ -8,8 +8,9 @@ on:
 
 env:
   JAVA_VERSION: '17'
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
   BUBBLEWRAP_VERSION: '1.21.0'
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
 jobs:
   build:
@@ -31,10 +32,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: 🤖 Setup Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          # Terima semua license otomatis
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          
+          # Install package yang diperlukan
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          
+          # Verifikasi
+          sdkmanager --list_installed | head -20
+          echo "✅ Android SDK ready"
 
       - name: 🔧 Install Bubblewrap
-        run: npm install -g @bubblewrap/cli@${{ env.BUBBLEWRAP_VERSION }}
+        run: |
+          npm install -g @bubblewrap/cli@${{ env.BUBBLEWRAP_VERSION }}
+          bubblewrap --version
 
       - name: 🔐 Restore Keystore
         env:
