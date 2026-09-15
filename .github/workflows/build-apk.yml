@@ -9,7 +9,7 @@ on:
 env:
   JAVA_VERSION: '17'
   NODE_VERSION: '20'
-  BUBBLEWRAP_VERSION: '1.21.0'
+  BUBBLEWRAP_VERSION: '1.18.0'
   ANDROID_SDK_ROOT: /home/runner/android-sdk
   ANDROID_HOME: /home/runner/android-sdk
   CMDLINE_TOOLS_VERSION: '11076708'
@@ -58,8 +58,25 @@ jobs:
 
       - name: 🔧 Install Bubblewrap
         run: |
+          echo "📦 Installing @bubblewrap/cli@${{ env.BUBBLEWRAP_VERSION }}..."
           npm install -g @bubblewrap/cli@${{ env.BUBBLEWRAP_VERSION }}
-          bubblewrap --version
+          
+          echo "🔍 Detecting npm global paths..."
+          NPM_GLOBAL_ROOT=$(npm root -g)
+          NPM_GLOBAL_BIN=$(dirname $NPM_GLOBAL_ROOT)
+          echo "NPM_GLOBAL_ROOT: $NPM_GLOBAL_ROOT"
+          echo "NPM_GLOBAL_BIN: $NPM_GLOBAL_BIN"
+          
+          echo "🔧 Adding npm global bin to PATH..."
+          echo "$NPM_GLOBAL_BIN" >> $GITHUB_PATH
+          export PATH="$NPM_GLOBAL_BIN:$PATH"
+          
+          echo "✅ Contents of global bin:"
+          ls -la $NPM_GLOBAL_BIN/ | grep -i bubble || echo "(no bubblewrap files found)"
+          
+          echo "🧪 Testing bubblewrap command..."
+          which bubblewrap || echo "❌ bubblewrap not in PATH"
+          bubblewrap --version || echo "⚠️ version check returned non-zero, but continuing..."
 
       - name: ⚙️ Configure Bubblewrap (Non-Interactive)
         run: |
@@ -148,11 +165,13 @@ jobs:
 
       - name: 🏗️ Init Bubblewrap (Non-Interactive)
         run: |
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$(npm root -g)/..:$PATH"
           mkdir -p android-build && cd android-build
           cp ../twa-manifest.json ./
           cp ../android.keystore ./
           echo "Y" | bubblewrap init --manifest=twa-manifest.json --directory=./ || true
+          echo "📁 Files in android-build:"
+          ls -la
 
       - name: 🔨 Build APK
         env:
@@ -160,7 +179,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$(npm root -g)/..:$PATH"
           cd android-build
           bubblewrap build \
             --skipPwaValidation \
