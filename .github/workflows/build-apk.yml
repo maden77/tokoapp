@@ -176,6 +176,10 @@ jobs:
           cd /tmp/tokoapp
           cordova platform add android@${{ env.CORDOVA_ANDROID_VERSION }}
           echo "✅ Android platform added"
+          echo "📁 Checking gradle wrapper folder:"
+          ls -la platforms/android/ | head -20
+          echo "📁 Checking gradle wrapper content:"
+          ls -la platforms/android/gradle/wrapper/ || echo "⚠️ gradle/wrapper folder not found yet"
 
       - name: 📝 Setup Signing Config
         run: |
@@ -203,10 +207,14 @@ jobs:
           
           cp build-extras.gradle platforms/android/app/build-extras.gradle
           echo "✅ build-extras.gradle placed"
+          ls -la platforms/android/app/
 
       - name: 📝 Force Gradle Version
         run: |
           cd /tmp/tokoapp/platforms/android
+          
+          # Buat folder gradle/wrapper jika belum ada
+          mkdir -p gradle/wrapper
           
           # Overwrite gradle-wrapper.properties untuk pakai Gradle 8.7
           cat > gradle/wrapper/gradle-wrapper.properties << 'WRAPPEREOF'
@@ -220,6 +228,9 @@ jobs:
           WRAPPEREOF
           
           echo "✅ Gradle wrapper set to 8.7"
+          echo "📁 Files in gradle/wrapper/:"
+          ls -la gradle/wrapper/
+          echo "📄 Content:"
           cat gradle/wrapper/gradle-wrapper.properties
 
       - name: 🔨 Build APK (Cordova)
