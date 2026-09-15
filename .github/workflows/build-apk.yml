@@ -9,7 +9,7 @@ on:
 env:
   JAVA_VERSION: '17'
   NODE_VERSION: '20'
-  BUBBLEWRAP_VERSION: '1.18.0'
+  CORDOVA_VERSION: '12.0.0'
   ANDROID_SDK_ROOT: /home/runner/android-sdk
   ANDROID_HOME: /home/runner/android-sdk
   CMDLINE_TOOLS_VERSION: '11076708'
@@ -43,52 +43,19 @@ jobs:
           unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
           echo "✅ Command-line tools extracted"
-          ls -la $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/
 
       - name: 📜 Accept licenses & Install packages
         run: |
           set -e
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
-          echo "📜 Accepting licenses..."
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          echo "📦 Installing platform-tools, platforms, build-tools..."
           sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
-          echo "✅ Installed packages:"
-          sdkmanager --list_installed
+          echo "✅ SDK packages installed"
 
-      - name: 🔧 Install Bubblewrap
+      - name: 🔧 Install Cordova
         run: |
-          echo "📦 Installing @bubblewrap/cli@${{ env.BUBBLEWRAP_VERSION }}..."
-          npm install -g @bubblewrap/cli@${{ env.BUBBLEWRAP_VERSION }}
-          
-          echo "🔍 Detecting npm global paths..."
-          NPM_GLOBAL_ROOT=$(npm root -g)
-          NPM_GLOBAL_BIN=$(dirname $NPM_GLOBAL_ROOT)
-          echo "NPM_GLOBAL_ROOT: $NPM_GLOBAL_ROOT"
-          echo "NPM_GLOBAL_BIN: $NPM_GLOBAL_BIN"
-          
-          echo "🔧 Adding npm global bin to PATH..."
-          echo "$NPM_GLOBAL_BIN" >> $GITHUB_PATH
-          export PATH="$NPM_GLOBAL_BIN:$PATH"
-          
-          echo "✅ Contents of global bin:"
-          ls -la $NPM_GLOBAL_BIN/ | grep -i bubble || echo "(no bubblewrap files found)"
-          
-          echo "🧪 Testing bubblewrap command..."
-          which bubblewrap || echo "❌ bubblewrap not in PATH"
-          bubblewrap --version || echo "⚠️ version check returned non-zero, but continuing..."
-
-      - name: ⚙️ Configure Bubblewrap (Non-Interactive)
-        run: |
-          mkdir -p ~/.bubblewrap
-          cat > ~/.bubblewrap/config.json << EOF
-          {
-            "jdkPath": "${JAVA_HOME}",
-            "androidSdkPath": "${ANDROID_SDK_ROOT}"
-          }
-          EOF
-          echo "✅ Bubblewrap config:"
-          cat ~/.bubblewrap/config.json
+          npm install -g cordova@${{ env.CORDOVA_VERSION }}
+          cordova --version
 
       - name: 🔐 Restore Keystore
         env:
@@ -129,77 +96,135 @@ jobs:
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "📱 PWA URL: $URL"
 
-      - name: 📝 Generate twa-manifest.json
+      - name: 🏗️ Create Cordova Project
         run: |
-          PKG="com.${{ github.repository_owner }}.tokoapp"
-          PKG=$(echo "$PKG" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9.')
-
-          cat > twa-manifest.json << EOF
-          {
-            "packageId": "$PKG",
-            "host": "${{ github.repository_owner }}.github.io",
-            "name": "Toko App",
-            "launcherName": "TokoApp",
-            "display": "standalone",
-            "themeColor": "#6366f1",
-            "backgroundColor": "#0f172a",
-            "startUrl": "${{ steps.url.outputs.url }}",
-            "iconUrl": "${{ steps.url.outputs.url }}icon-512.png",
-            "webManifestUrl": "${{ steps.url.outputs.url }}manifest.json",
-            "appVersionName": "${{ steps.version.outputs.VERSION_NAME }}",
-            "appVersionCode": ${{ steps.version.outputs.VERSION_CODE }},
-            "shortcuts": [],
-            "generatorApp": "bubblewrap-cli",
-            "fallbackType": "customtabs",
-            "features": {},
-            "alphaDependencies": { "enabled": false },
-            "enableNotifications": false,
-            "orientation": "portrait",
-            "fingerprints": [],
-            "additionalTrustedOrigins": [],
-            "retainedBundles": [],
-            "appVersion": "${{ steps.version.outputs.VERSION_NAME }}"
-          }
-          EOF
-          cat twa-manifest.json
-
-      - name: 🏗️ Init Bubblewrap (Non-Interactive)
-        run: |
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$(npm root -g)/..:$PATH"
-          mkdir -p android-build && cd android-build
-          cp ../twa-manifest.json ./
-          cp ../android.keystore ./
-          echo "Y" | bubblewrap init --manifest=twa-manifest.json --directory=./ || true
-          echo "📁 Files in android-build:"
+          cd /tmp
+          cordova create tokoapp com.tokoapp.pwa "Toko App" --template=blank
+          cd tokoapp
+          echo "✅ Cordova project created"
           ls -la
 
-      - name: 🔨 Build APK
+      - name: 📝 Configure Cordova for PWA
+        run: |
+          cd /tmp/tokoapp
+          
+          # Set config.xml
+          cat > config.xml << EOF
+          <?xml version='1.0' encoding='utf-8'?>
+          <widget id="com.tokoapp.pwa" version="${{ steps.version.outputs.VERSION_NAME }}" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+              <name>Toko App</name>
+              <description>Toko App PWA</description>
+              <author email="dev@example.com" href="https://example.com">
+                  Developer
+              </author>
+              <content src="index.html" />
+              <access origin="*" />
+              <allow-intent href="http://*/*" />
+              <allow-intent href="https://*/*" />
+              <preference name="Orientation" value="portrait" />
+              <preference name="BackgroundColor" value="0xFF0F172A" />
+              <preference name="StatusBarBackgroundColor" value="#0f172a" />
+              <preference name="StatusBarStyle" value="lightcontent" />
+              <preference name="Fullscreen" value="false" />
+          </widget>
+          EOF
+          
+          # Kosongkan folder www, isi dengan URL redirect ke PWA
+          rm -rf www/*
+          cat > www/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap:">
+              <title>Toko App</title>
+              <style>
+                  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#0f172a; }
+                  iframe { position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
+              </style>
+          </head>
+          <body>
+              <iframe id="pwa-frame" src="about:blank"></iframe>
+              <script>
+                  document.addEventListener('deviceready', function() {
+                      var url = 'PWA_URL_PLACEHOLDER';
+                      document.getElementById('pwa-frame').src = url;
+                  }, false);
+                  // Fallback kalau deviceready tidak fire (test di browser)
+                  setTimeout(function() {
+                      var frame = document.getElementById('pwa-frame');
+                      if (frame.src === 'about:blank') {
+                          frame.src = 'PWA_URL_PLACEHOLDER';
+                      }
+                  }, 1000);
+              </script>
+          </body>
+          </html>
+          HTMLEOF
+          
+          # Ganti placeholder dengan URL asli
+          sed -i "s|PWA_URL_PLACEHOLDER|${{ steps.url.outputs.url }}|g" www/index.html
+          
+          echo "✅ Config & www ready"
+          cat config.xml
+          echo "---"
+          cat www/index.html
+
+      - name: ➕ Add Android Platform
+        run: |
+          cd /tmp/tokoapp
+          cordova platform add android@12.0.0
+          echo "✅ Android platform added"
+
+      - name: 📝 Copy Keystore ke Cordova
+        run: |
+          cp android.keystore /tmp/tokoapp/android.keystore
+          cd /tmp/tokoapp
+          cat > build-extras.gradle << 'EOF'
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("android.keystore")
+                      storePassword System.getenv("KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("KEY_ALIAS")
+                      keyPassword System.getenv("KEY_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+          }
+          EOF
+          cp build-extras.gradle platforms/android/build-extras.gradle
+          echo "✅ Keystore & build-extras.gradle copied"
+
+      - name: 🔨 Build APK (Cordova)
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$(npm root -g)/..:$PATH"
-          cd android-build
-          bubblewrap build \
-            --skipPwaValidation \
-            --signingKeyPath=./android.keystore \
-            --signingKeyAlias="$KEY_ALIAS" \
-            --password="$KEYSTORE_PASSWORD"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          cd /tmp/tokoapp
+          cordova build android --release -- --packageType=apk
 
       - name: 📦 Prepare output
         run: |
-          cd android-build
-          mkdir -p ../output
-          if [ -f app-release-signed.apk ]; then
-            cp app-release-signed.apk "../output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}.apk"
-          elif [ -f app-release-unsigned.apk ]; then
-            cp app-release-unsigned.apk "../output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}-unsigned.apk"
+          mkdir -p output
+          cd /tmp/tokoapp
+          find platforms/android -name "*.apk" -type f
+          
+          if [ -f platforms/android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp platforms/android/app/build/outputs/apk/release/app-release.apk "/home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}.apk"
+          elif [ -f platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk "/home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}-unsigned.apk"
           fi
-          if [ -f app-release-bundle.aab ]; then
-            cp app-release-bundle.aab "../output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}.aab"
-          fi
-          ls -lh ../output/
+          
+          ls -lh "/home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/output/" || true
 
       - name: ⬆️ Upload APK
         uses: actions/upload-artifact@v4
@@ -209,15 +234,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: ⬆️ Upload AAB
-        uses: actions/upload-artifact@v4
-        with:
-          name: tokoapp-aab-${{ steps.version.outputs.VERSION_NAME }}
-          path: output/*.aab
-          retention-days: 30
-          if-no-files-found: warn
-
       - name: 🧹 Cleanup
         if: always()
         run: |
-          rm -f android.keystore android-build/android.keystore
+          rm -f android.keystore /tmp/tokoapp/android.keystore
