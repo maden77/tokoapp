@@ -10,6 +10,8 @@ env:
   JAVA_VERSION: '17'
   NODE_VERSION: '20'
   CORDOVA_VERSION: '12.0.0'
+  CORDOVA_ANDROID_VERSION: '12.0.1'
+  GRADLE_VERSION: '8.7'
   ANDROID_SDK_ROOT: /home/runner/android-sdk
   ANDROID_HOME: /home/runner/android-sdk
   CMDLINE_TOOLS_VERSION: '11076708'
@@ -56,6 +58,18 @@ jobs:
         run: |
           npm install -g cordova@${{ env.CORDOVA_VERSION }}
           cordova --version
+          echo "✅ Cordova installed"
+
+      - name: 🎯 Install Gradle ${{ env.GRADLE_VERSION }}
+        run: |
+          set -e
+          echo "📥 Downloading Gradle ${{ env.GRADLE_VERSION }}..."
+          cd /tmp
+          wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -O gradle.zip
+          unzip -q gradle.zip -d /opt
+          mv /opt/gradle-${GRADLE_VERSION} /opt/gradle
+          echo "✅ Gradle installed at /opt/gradle"
+          /opt/gradle/bin/gradle --version
 
       - name: 🔐 Restore Keystore
         env:
@@ -101,10 +115,8 @@ jobs:
           set -e
           cd /tmp
           rm -rf tokoapp
-          
           echo "🔨 Running cordova create..."
           cordova create tokoapp com.tokoapp.pwa TokoApp
-          
           echo "✅ Project created"
           ls -la /tmp/tokoapp/
 
@@ -112,10 +124,9 @@ jobs:
         run: |
           cd /tmp/tokoapp
           
-          # Overwrite config.xml
-          cat > config.xml << 'XMLEOF'
+          cat > config.xml << XMLEOF
           <?xml version='1.0' encoding='utf-8'?>
-          <widget id="com.tokoapp.pwa" version="VERSION_PLACEHOLDER" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+          <widget id="com.tokoapp.pwa" version="${{ steps.version.outputs.VERSION_NAME }}" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
               <name>Toko App</name>
               <description>Toko App PWA</description>
               <author email="dev@example.com" href="https://example.com">Developer</author>
@@ -129,13 +140,13 @@ jobs:
               <preference name="StatusBarStyle" value="lightcontent" />
               <preference name="Fullscreen" value="false" />
               <preference name="AndroidInsecureFileModeEnabled" value="true" />
+              <preference name="GradlePluginKotlinEnabled" value="false" />
+              <preference name="GradlePluginGoogleServicesEnabled" value="false" />
+              <preference name="AndroidGradlePluginVersion" value="8.1.4" />
+              <preference name="GradleVersion" value="${{ env.GRADLE_VERSION }}" />
           </widget>
           XMLEOF
           
-          # Ganti placeholder version
-          sed -i "s/VERSION_PLACEHOLDER/${{ steps.version.outputs.VERSION_NAME }}/g" config.xml
-          
-          # Kosongkan folder www, isi dengan redirect ke PWA
           rm -rf www/*
           cat > www/index.html << 'HTMLEOF'
           <!DOCTYPE html>
@@ -152,32 +163,18 @@ jobs:
           </head>
           <body>
               <iframe id="pwa-frame" src="PWA_URL_PLACEHOLDER"></iframe>
-              <script>
-                  // Fallback kalau url berubah
-                  window.addEventListener('load', function() {
-                      var frame = document.getElementById('pwa-frame');
-                      if (!frame.src || frame.src === 'about:blank') {
-                          frame.src = 'PWA_URL_PLACEHOLDER';
-                      }
-                  });
-              </script>
           </body>
           </html>
           HTMLEOF
           
-          # Ganti placeholder URL
           sed -i "s|PWA_URL_PLACEHOLDER|${{ steps.url.outputs.url }}|g" www/index.html
           
           echo "✅ Config & www ready"
-          echo "=== config.xml ==="
-          cat config.xml
-          echo "=== www/index.html ==="
-          cat www/index.html
 
       - name: ➕ Add Android Platform
         run: |
           cd /tmp/tokoapp
-          cordova platform add android@12.0.0
+          cordova platform add android@${{ env.CORDOVA_ANDROID_VERSION }}
           echo "✅ Android platform added"
 
       - name: 📝 Setup Signing Config
@@ -206,37 +203,61 @@ jobs:
           
           cp build-extras.gradle platforms/android/app/build-extras.gradle
           echo "✅ build-extras.gradle placed"
-          ls -la platforms/android/app/
+
+      - name: 📝 Force Gradle Version
+        run: |
+          cd /tmp/tokoapp/platforms/android
+          
+          # Overwrite gradle-wrapper.properties untuk pakai Gradle 8.7
+          cat > gradle/wrapper/gradle-wrapper.properties << 'WRAPPEREOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          networkTimeout=10000
+          validateDistributionUrl=true
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          WRAPPEREOF
+          
+          echo "✅ Gradle wrapper set to 8.7"
+          cat gradle/wrapper/gradle-wrapper.properties
 
       - name: 🔨 Build APK (Cordova)
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          GRADLE_USER_HOME: /tmp/gradle-home
         run: |
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           cd /tmp/tokoapp
+          
+          echo "🔨 Building APK with Cordova..."
           cordova build android --release -- --packageType=apk
           
-          echo "📦 APK files:"
+          echo "📦 APK files found:"
           find platforms/android -name "*.apk" -type f
 
       - name: 📦 Prepare output
+        if: success()
         run: |
           mkdir -p output
           REPO_PATH="/home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}"
           
           if [ -f /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release.apk ]; then
             cp /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release.apk "$REPO_PATH/output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}.apk"
-          fi
-          
-          if [ -f /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            echo "✅ APK copied"
+          elif [ -f /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
             cp /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk "$REPO_PATH/output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}-unsigned.apk"
+            echo "✅ Unsigned APK copied"
+          else
+            echo "⚠️ No APK found"
           fi
           
-          ls -lh "$REPO_PATH/output/" || echo "⚠️ No APK found"
+          ls -lh "$REPO_PATH/output/" || true
 
       - name: ⬆️ Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: tokoapp-apk-${{ steps.version.outputs.VERSION_NAME }}
