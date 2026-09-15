@@ -1,0 +1,63 @@
+# ---------- Dependencies ----------
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+
+# ---------- Build ----------
+dist/
+build/
+out/
+.cache/
+
+# ---------- Env & Secrets ----------
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+secrets/
+credentials/
+
+# ---------- User Data ----------
+*.tokobak
+*.bak
+backup-*/
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+._*
+
+# ---------- Editor ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-*
+
+# ---------- Test ----------
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# ---------- Cache ----------
+.eslintcache
+.stylelintcache
+.parcel-cache/
+.vercel/
+.netlify/
+
+# ---------- Temp ----------
+tmp/
+temp/
+*.tmp
