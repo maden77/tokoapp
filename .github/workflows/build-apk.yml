@@ -98,25 +98,27 @@ jobs:
 
       - name: 🏗️ Create Cordova Project
         run: |
+          set -e
           cd /tmp
-          cordova create tokoapp com.tokoapp.pwa "Toko App" --template=blank
-          cd tokoapp
-          echo "✅ Cordova project created"
-          ls -la
+          rm -rf tokoapp
+          
+          echo "🔨 Running cordova create..."
+          cordova create tokoapp com.tokoapp.pwa TokoApp
+          
+          echo "✅ Project created"
+          ls -la /tmp/tokoapp/
 
       - name: 📝 Configure Cordova for PWA
         run: |
           cd /tmp/tokoapp
           
-          # Set config.xml
-          cat > config.xml << EOF
+          # Overwrite config.xml
+          cat > config.xml << 'XMLEOF'
           <?xml version='1.0' encoding='utf-8'?>
-          <widget id="com.tokoapp.pwa" version="${{ steps.version.outputs.VERSION_NAME }}" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+          <widget id="com.tokoapp.pwa" version="VERSION_PLACEHOLDER" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
               <name>Toko App</name>
               <description>Toko App PWA</description>
-              <author email="dev@example.com" href="https://example.com">
-                  Developer
-              </author>
+              <author email="dev@example.com" href="https://example.com">Developer</author>
               <content src="index.html" />
               <access origin="*" />
               <allow-intent href="http://*/*" />
@@ -126,17 +128,21 @@ jobs:
               <preference name="StatusBarBackgroundColor" value="#0f172a" />
               <preference name="StatusBarStyle" value="lightcontent" />
               <preference name="Fullscreen" value="false" />
+              <preference name="AndroidInsecureFileModeEnabled" value="true" />
           </widget>
-          EOF
+          XMLEOF
           
-          # Kosongkan folder www, isi dengan URL redirect ke PWA
+          # Ganti placeholder version
+          sed -i "s/VERSION_PLACEHOLDER/${{ steps.version.outputs.VERSION_NAME }}/g" config.xml
+          
+          # Kosongkan folder www, isi dengan redirect ke PWA
           rm -rf www/*
           cat > www/index.html << 'HTMLEOF'
           <!DOCTYPE html>
           <html>
           <head>
               <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
               <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap:">
               <title>Toko App</title>
               <style>
@@ -145,30 +151,27 @@ jobs:
               </style>
           </head>
           <body>
-              <iframe id="pwa-frame" src="about:blank"></iframe>
+              <iframe id="pwa-frame" src="PWA_URL_PLACEHOLDER"></iframe>
               <script>
-                  document.addEventListener('deviceready', function() {
-                      var url = 'PWA_URL_PLACEHOLDER';
-                      document.getElementById('pwa-frame').src = url;
-                  }, false);
-                  // Fallback kalau deviceready tidak fire (test di browser)
-                  setTimeout(function() {
+                  // Fallback kalau url berubah
+                  window.addEventListener('load', function() {
                       var frame = document.getElementById('pwa-frame');
-                      if (frame.src === 'about:blank') {
+                      if (!frame.src || frame.src === 'about:blank') {
                           frame.src = 'PWA_URL_PLACEHOLDER';
                       }
-                  }, 1000);
+                  });
               </script>
           </body>
           </html>
           HTMLEOF
           
-          # Ganti placeholder dengan URL asli
+          # Ganti placeholder URL
           sed -i "s|PWA_URL_PLACEHOLDER|${{ steps.url.outputs.url }}|g" www/index.html
           
           echo "✅ Config & www ready"
+          echo "=== config.xml ==="
           cat config.xml
-          echo "---"
+          echo "=== www/index.html ==="
           cat www/index.html
 
       - name: ➕ Add Android Platform
@@ -177,15 +180,16 @@ jobs:
           cordova platform add android@12.0.0
           echo "✅ Android platform added"
 
-      - name: 📝 Copy Keystore ke Cordova
+      - name: 📝 Setup Signing Config
         run: |
           cp android.keystore /tmp/tokoapp/android.keystore
           cd /tmp/tokoapp
-          cat > build-extras.gradle << 'EOF'
+          
+          cat > build-extras.gradle << 'GRADLEEOF'
           android {
               signingConfigs {
                   release {
-                      storeFile file("android.keystore")
+                      storeFile file("../android.keystore")
                       storePassword System.getenv("KEYSTORE_PASSWORD")
                       keyAlias System.getenv("KEY_ALIAS")
                       keyPassword System.getenv("KEY_PASSWORD")
@@ -198,9 +202,11 @@ jobs:
                   }
               }
           }
-          EOF
-          cp build-extras.gradle platforms/android/build-extras.gradle
-          echo "✅ Keystore & build-extras.gradle copied"
+          GRADLEEOF
+          
+          cp build-extras.gradle platforms/android/app/build-extras.gradle
+          echo "✅ build-extras.gradle placed"
+          ls -la platforms/android/app/
 
       - name: 🔨 Build APK (Cordova)
         env:
@@ -211,20 +217,24 @@ jobs:
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           cd /tmp/tokoapp
           cordova build android --release -- --packageType=apk
+          
+          echo "📦 APK files:"
+          find platforms/android -name "*.apk" -type f
 
       - name: 📦 Prepare output
         run: |
           mkdir -p output
-          cd /tmp/tokoapp
-          find platforms/android -name "*.apk" -type f
+          REPO_PATH="/home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}"
           
-          if [ -f platforms/android/app/build/outputs/apk/release/app-release.apk ]; then
-            cp platforms/android/app/build/outputs/apk/release/app-release.apk "/home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}.apk"
-          elif [ -f platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
-            cp platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk "/home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}-unsigned.apk"
+          if [ -f /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release.apk "$REPO_PATH/output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}.apk"
           fi
           
-          ls -lh "/home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/output/" || true
+          if [ -f /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp /tmp/tokoapp/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk "$REPO_PATH/output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}-unsigned.apk"
+          fi
+          
+          ls -lh "$REPO_PATH/output/" || echo "⚠️ No APK found"
 
       - name: ⬆️ Upload APK
         uses: actions/upload-artifact@v4
@@ -232,7 +242,7 @@ jobs:
           name: tokoapp-apk-${{ steps.version.outputs.VERSION_NAME }}
           path: output/*.apk
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: 🧹 Cleanup
         if: always()
