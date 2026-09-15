@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#6366f1">
+<meta name="color-scheme" content="dark light">
+<meta name="referrer" content="no-referrer">
+
+<!-- CSP ketat: tanpa CDN, tanpa inline script -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' blob: data:;
+  media-src 'self' blob:;
+  connect-src 'self';
+  font-src 'self';
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'none';
+  worker-src 'self';
+  manifest-src 'self';
+  upgrade-insecure-requests;
+">
+
+<!-- iOS PWA -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Toko App">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="assets/style.css">
+<title>Aplikasi</title>
+</head>
+<body>
+
+<!-- Lock Screen -->
+<div id="lockScreen" class="lock-screen" hidden>
+  <div class="lock-box">
+    <h2>🔒 Terkunci</h2>
+    <p id="lockMsg">Masukkan PIN untuk membuka</p>
+    <input id="pinInput" class="pin-input" type="password" inputmode="numeric"
+           pattern="[0-9]*" maxlength="12" autocomplete="off"
+           aria-label="PIN" placeholder="••••">
+    <button class="lock-btn" id="unlockBtn">Buka</button>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main" hidden>
+  <div class="topbar">
+    <button class="back" id="btnBack" aria-label="Kembali">←</button>
+    <h1 id="appTitle">Aplikasi</h1>
+  </div>
+  <div id="appContent"></div>
+</div>
+
+<!-- Scripts: lokal semua -->
+<script src="assets/dexie.min.js"></script>
+<script src="assets/ui.js"></script>
+<script src="assets/crypto.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
