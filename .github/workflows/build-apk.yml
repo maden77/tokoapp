@@ -8,9 +8,9 @@ on:
 
 env:
   JAVA_VERSION: '17'
-  NODE_VERSION: '22'
+  NODE_VERSION: '20'
   BUBBLEWRAP_VERSION: '1.21.0'
-  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  ACTIONS_ALLOW_UNSECURE_NODE_VERSION: 'true'
 
 jobs:
   build:
@@ -32,15 +32,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+
+      - name: 📜 Accept Android licenses
         run: |
-          # Terima semua license otomatis
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          
-          # Install package yang diperlukan
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
-          
-          # Verifikasi
-          sdkmanager --list_installed | head -20
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
           echo "✅ Android SDK ready"
 
       - name: 🔧 Install Bubblewrap
