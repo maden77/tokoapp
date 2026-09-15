@@ -39,12 +39,9 @@ jobs:
           echo "📥 Download Android command-line tools..."
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
           cd /tmp
-          
           wget -q "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" -O cmdline-tools.zip
-          
           unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          
           echo "✅ Command-line tools extracted"
           ls -la $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/
 
@@ -52,13 +49,10 @@ jobs:
         run: |
           set -e
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
-          
           echo "📜 Accepting licenses..."
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          
           echo "📦 Installing platform-tools, platforms, build-tools..."
           sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
-          
           echo "✅ Installed packages:"
           sdkmanager --list_installed
 
@@ -66,6 +60,18 @@ jobs:
         run: |
           npm install -g @bubblewrap/cli@${{ env.BUBBLEWRAP_VERSION }}
           bubblewrap --version
+
+      - name: ⚙️ Configure Bubblewrap (Non-Interactive)
+        run: |
+          mkdir -p ~/.bubblewrap
+          cat > ~/.bubblewrap/config.json << EOF
+          {
+            "jdkPath": "${JAVA_HOME}",
+            "androidSdkPath": "${ANDROID_SDK_ROOT}"
+          }
+          EOF
+          echo "✅ Bubblewrap config:"
+          cat ~/.bubblewrap/config.json
 
       - name: 🔐 Restore Keystore
         env:
@@ -140,13 +146,13 @@ jobs:
           EOF
           cat twa-manifest.json
 
-      - name: 🏗️ Init Bubblewrap
+      - name: 🏗️ Init Bubblewrap (Non-Interactive)
         run: |
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           mkdir -p android-build && cd android-build
           cp ../twa-manifest.json ./
           cp ../android.keystore ./
-          bubblewrap init --manifest=twa-manifest.json --directory=./
+          echo "Y" | bubblewrap init --manifest=twa-manifest.json --directory=./ || true
 
       - name: 🔨 Build APK
         env:
@@ -166,17 +172,14 @@ jobs:
         run: |
           cd android-build
           mkdir -p ../output
-
           if [ -f app-release-signed.apk ]; then
             cp app-release-signed.apk "../output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}.apk"
           elif [ -f app-release-unsigned.apk ]; then
             cp app-release-unsigned.apk "../output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}-unsigned.apk"
           fi
-
           if [ -f app-release-bundle.aab ]; then
             cp app-release-bundle.aab "../output/tokoapp-${{ steps.version.outputs.VERSION_NAME }}.aab"
           fi
-
           ls -lh ../output/
 
       - name: ⬆️ Upload APK
