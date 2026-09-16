@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#6366f1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' wss://0.peerjs.com https://0.peerjs.com; object-src 'none'; frame-ancestors 'none';">
+<link rel="manifest" href="manifest.json">
+<title>💬 Pesan — Toko App</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root { --bg:#0f172a; --bg-2:#1e293b; --text:#fff; --text-dim:#94a3b8; --border:rgba(255,255,255,.1); --primary:#6366f1; --accent:#a855f7; }
+  html, body { font-family:-apple-system,sans-serif; background:var(--bg); color:var(--text); height:100vh; overflow:hidden; }
+
+  /* Lock Screen */
+  .lock-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; }
+  .lock-screen.hidden { display:none !important; }
+  .lock-box { width:100%; max-width:320px; text-align:center; }
+  .lock-box h2 { font-size:22px; margin-bottom:8px; }
+  .lock-box p { color:var(--text-dim); font-size:13px; margin-bottom:20px; }
+  .pin-input { width:100%; padding:16px; background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:12px; color:#fff; font-size:24px; letter-spacing:8px; text-align:center; outline:none; font-family:inherit; }
+  .lock-btn { margin-top:16px; width:100%; padding:14px; background:linear-gradient(90deg,var(--primary),var(--accent)); border:none; border-radius:12px; color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
+
+  /* Main */
+  .main-app { display:none; flex-direction:column; height:100vh; }
+  .main-app.visible { display:flex; }
+  .chat-page { display:flex; flex-direction:column; flex:1; min-height:0; }
+
+  .chat-header { display:flex; align-items:center; gap:12px; padding:12px 16px; padding-top:calc(12px + env(safe-area-inset-top,0px)); background:rgba(15,23,42,.95); backdrop-filter:blur(10px); border-bottom:1px solid var(--border); flex-shrink:0; }
+  .back-btn { background:rgba(255,255,255,.1); border:none; color:#fff; width:38px; height:38px; border-radius:10px; font-size:18px; cursor:pointer; }
+  .contact-info { flex:1; display:flex; align-items:center; gap:10px; min-width:0; }
+  .contact-avatar { width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,var(--primary),var(--accent)); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+  .contact-meta { min-width:0; }
+  .contact-name { font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .contact-status { font-size:11px; color:var(--text-dim); }
+  .header-btn { background:rgba(255,255,255,.1); border:none; color:#fff; width:42px; height:42px; border-radius:50%; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+
+  .messages { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:8px; background:radial-gradient(circle at 50% 0%,rgba(99,102,241,.08),transparent 70%),var(--bg); scroll-behavior:smooth; -webkit-overflow-scrolling:touch; min-height:0; }
+
+  .msg { max-width:78%; padding:10px 14px; border-radius:16px; font-size:15px; line-height:1.4; word-wrap:break-word; animation:msgIn .2s ease-out; }
+  @keyframes msgIn { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:none;} }
+  .msg.me { align-self:flex-end; background:var(--primary); border-bottom-right-radius:4px; color:#fff; }
+  .msg.them { align-self:flex-start; background:#334155; border-bottom-left-radius:4px; color:#fff; }
+  .msg-time { font-size:10px; opacity:.6; margin-top:4px; display:block; text-align:right; }
+  .msg-emoji { font-size:48px; line-height:1.1; padding:4px 8px; background:transparent !important; }
+  .msg-sticker { font-size:72px; line-height:1; padding:0; background:transparent !important; }
+  .msg-voice { display:flex; align-items:center; gap:8px; min-width:180px; }
+  .voice-play { width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.15); border:none; color:#fff; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .voice-play.playing { background:#fff; color:var(--primary); }
+  .voice-wave { flex:1; height:24px; display:flex; align-items:center; gap:2px; }
+  .voice-wave span { width:3px; background:rgba(255,255,255,.6); border-radius:2px; }
+  .voice-duration { font-size:11px; opacity:.8; flex-shrink:0; }
+
+  .empty-chat { text-align:center; color:var(--text-dim); margin:auto; font-size:14px; padding:40px 20px; }
+  .empty-chat .big { font-size:64px; display:block; margin-bottom:12px; }
+
+  .input-area { display:flex; align-items:flex-end; gap:8px; padding:10px 12px; padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); background:rgba(15,23,42,.95); backdrop-filter:blur(10px); border-top:1px solid var(--border); flex-shrink:0; position:relative; }
+  .input-btn { width:42px; height:42px; border-radius:50%; background:rgba(255,255,255,.1); border:none; color:#fff; font-size:18px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .input-btn.record { background:linear-gradient(135deg,#dc2626,#f59e0b); }
+  .input-btn.record.recording { animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.6);} 50%{box-shadow:0 0 0 12px rgba(220,38,38,0);} }
+  .input-btn.send { background:linear-gradient(135deg,var(--primary),var(--accent)); }
+  .chat-input { flex:1; background:rgba(255,255,255,.08); border:1px solid var(--border); border-radius:22px; padding:10px 16px; color:#fff; font-size:15px; font-family:inherit; outline:none; resize:none; max-height:120px; min-height:42px; line-height:1.4; }
+  .chat-input::placeholder { color:#64748b; }
+
+  .emoji-picker { position:absolute; bottom:100%; left:0; right:0; background:var(--bg-2); border-top:1px solid var(--border); max-height:320px; overflow-y:auto; padding:12px; display:none; z-index:20; }
+  .emoji-picker.show { display:block; }
+  .emoji-tabs { display:flex; gap:6px; margin-bottom:10px; overflow-x:auto; padding-bottom:6px; }
+  .emoji-tab { padding:6px 12px; background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:16px; color:#fff; font-size:13px; cursor:pointer; white-space:nowrap; font-family:inherit; }
+  .emoji-tab.active { background:linear-gradient(135deg,var(--primary),var(--accent)); border:none; }
+  .emoji-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:4px; }
+  .emoji-item { aspect-ratio:1; background:transparent; border:none; font-size:24px; cursor:pointer; border-radius:8px; display:flex; align-items:center; justify-content:center; }
+  .emoji-item.sticker { font-size:42px; }
+
+  .recording-bar { display:flex; align-items:center; gap:10px; padding:12px 16px; background:rgba(220,38,38,.15); border-top:1px solid rgba(220,38,38,.4); color:#fca5a5; font-size:14px; }
+  .recording-bar[hidden] { display:none; }
+  .rec-dot { width:10px; height:10px; background:#dc2626; border-radius:50%; animation:blink 1s infinite; }
+  @keyframes blink { 50%{opacity:.3;} }
+
+  .call-modal { position:fixed; inset:0; background:linear-gradient(135deg,#0f172a,#1e293b); z-index:10000; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:60px 20px; }
+  .call-modal[hidden] { display:none; }
+  .call-avatar { width:130px; height:130px; border-radius:50%; background:linear-gradient(135deg,var(--primary),var(--accent)); display:flex; align-items:center; justify-content:center; font-size:60px; animation:callPulse 2s infinite; }
+  @keyframes callPulse { 0%{box-shadow:0 0 0 0 rgba(99,102,241,.7);} 70%{box-shadow:0 0 0 30px rgba(99,102,241,0);} 100%{box-shadow:0 0 0 0 rgba(99,102,241,0);} }
+  .call-name { font-size:24px; font-weight:600; margin-top:20px; }
+  .call-status { color:var(--text-dim); font-size:14px; margin-top:6px; }
+  .call-actions { display:flex; gap:40px; }
+  .call-btn { width:68px; height:68px; border-radius:50%; border:none; color:#fff; font-size:26px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .call-btn.end { background:#dc2626; }
+  .call-btn.mute { background:rgba(255,255,255,.15); }
+  .call-btn.mute.active { background:#f59e0b; }
+</style>
+</head>
+<body>
+
+<!-- LOCK -->
+<div id="lockScreen" class="lock-screen">
+  <div class="lock-box">
+    <h2 id="lockTitle">🔐 Buat PIN</h2>
+    <p id="lockMsg">PIN baru (min 6 digit) untuk mengenkripsi</p>
+    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" maxlength="12" placeholder="PIN baru">
+    <button class="lock-btn" id="unlockBtn">Buat PIN</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main" class="main-app">
+  <div class="chat-page">
+    <div class="chat-header">
+      <button class="back-btn" onclick="location.href='index.html'">←</button>
+      <div class="contact-info">
+        <div class="contact-avatar">👤</div>
+        <div class="contact-meta">
+          <div class="contact-name" id="contactName">Kontak</div>
+          <div class="contact-status" id="contactStatus">online</div>
+        </div>
+      </div>
+      <button class="header-btn" id="btnCall">📞</button>
+    </div>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="recording-bar" id="recordingBar" hidden>
+      <div class="rec-dot"></div>
+      <span id="recTime">0:00</span>
+      <span style="margin-left:auto;font-size:12px;">Rekam suara...</span>
+    </div>
+
+    <div class="input-area">
+      <button class="input-btn" id="btnEmoji">😊</button>
+      <textarea class="chat-input" id="chatInput" placeholder="Ketik pesan..." rows="1"></textarea>
+      <button class="input-btn record" id="btnMic">🎤</button>
+      <button class="input-btn send" id="btnSend">➤</button>
+
+      <div class="emoji-picker" id="emojiPicker">
+        <div class="emoji-tabs" id="emojiTabs"></div>
+        <div class="emoji-grid" id="emojiGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CALL MODAL -->
+<div id="callModal" class="call-modal" hidden>
+  <div style="text-align:center;">
+    <div class="call-avatar">👤</div>
+    <div class="call-name" id="callName">Kontak</div>
+    <div class="call-status" id="callStatus">Memanggil...</div>
+  </div>
+  <div class="call-actions">
+    <button class="call-btn mute" id="btnMute">🎤</button>
+    <button class="call-btn end" id="btnEndCall">📵</button>
+  </div>
+</div>
+
+<script src="shared/dexie.min.js"></script>
+<script src="shared/ui.js"></script>
+<script src="shared/crypto.js"></script>
+
+<script>
+'use strict';
+
+// ============================================================
+//  EMOJI DATA
+// ============================================================
+const EMOJI_DATA = {
+  smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','🤡','👻','👽','🤖'],
+  gestures: ['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦵','🦶','👂','👃','🧠','👀','👁️','👄','💋'],
+  hearts: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','♥️','💌','💋','😻','💐','🌹','🥀','🌺','🌷','🌼','🌸'],
+  animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🐢','🐍','🦎','🐙','🦑','🦐','🐡','🐠','🐟','🐬','🐳','🦈','🐊','🐅','🐘','🦒','🦓','🐕','🐈'],
+  food: ['🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🥑','🥦','🌽','🥕','🥔','🍠','🥐','🍞','🥖','🧀','🥚','🍳','🥞','🥓','🥩','🍗','🍔','🍟','🍕','🌭','🥪','🌮','🌯','🥗','🍝','🍜','🍲','🍛','🍣','🍱','🍙','🍚','🍦','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🍯','☕','🍵','🥤','🧋','🍺','🍻','🥂','🍷','🍸'],
+  activities: ['⚽','🏀','🏈','⚾','🎾','🏐','🏉','🎱','🏓','🏸','🏒','🏏','⛳','🏹','🎣','🥊','🥋','🎽','🛹','⛸️','🎿','🏂','🏋️','🤸','🧘','🏄','🏊','🚴','🏆','🥇','🥈','🥉','🏅','🎫','🎪','🎭','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🎻','🎲','🎯','🎳','🎮','🎰','🧩'],
+  objects: ['⌚','📱','📲','💻','⌨️','🖥️','🖨️','🖱️','💽','💾','💿','📀','📷','📸','📹','🎥','📞','☎️','📟','📺','📻','🎙️','⏱️','⏰','⌛','⏳','📡','🔋','🔌','💡','🔦','🕯️','💰','💳','💎','🔧','🔨','🔩','⚙️','🔫','💣','🧨','🪓','🔪','⚔️','🛡️','🔮','💊','💉','🧬','🦠','🧪','🌡️','🔑','🗝️','🚪','🛋️','🛏️','🧸','🖼️','🛍️','🛒','🎁','🎈','🎀','🎊','🎉','✉️','📧','📦','📮','📜','📃','📄','📊','📈','📉','📅','🗑️','📋','📁','📂','📰','📓','📕','📗','📘','📙','📚','📖','🔖','📎','📐','📏','🧮','📌','📍','✂️','✏️','🔍','🔒','🔓'],
+  symbols: ['❤️','💯','⚛️','☢️','☣️','📴','📳','❌','⭕','🛑','⛔','📛','🚫','💢','♨️','🚷','🚯','🔞','📵','🚭','❗','❓','‼️','⚠️','🔱','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','🌀','💤','♿','🅿️','🎦','📶','ℹ️','🔤','🔠','🆖','🆗','🆙','🆒','🆕','🆓','🔢','#️⃣','*️⃣','▶️','⏸️','⏹️','⏩','⏪','⏫','⏬','➡️','⬅️','⬆️','⬇️','🔀','🔁','🔂','🔄','🎵','🎶','➕','➖','➗','✖️','♾️','💲','💱','©️','®️','✔️','☑️','🔘','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔺','🔻','🔸','🔹','🔶','🔷','🔳','🔲','⬛','⬜','🔈','🔇','🔉','🔊','🔔','🔕','📣','📢','💬','💭','🗯️','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚','🕛'],
+  flags: ['🏁','🚩','🎌','🏴','🏳️','🏳️‍🌈','🏴‍☠️','🇮🇩','🇲🇾','🇸🇬','🇹🇭','🇻🇳','🇵🇭','🇺🇸','🇬🇧','🇯🇵','🇰🇷','🇨🇳','🇮🇳','🇦🇺','🇨🇦','🇩🇪','🇫🇷','🇮🇹','🇪🇸','🇧🇷','🇲🇽','🇳🇱','🇸🇦','🇦🇪','🇪🇬','🇹🇷','🇷🇺','🇿🇦','🇳🇬','🇰🇪','🇦🇷','🇨🇱','🇵🇪']
+};
+
+const STICKERS = ['❤️','😍','😂','🤣','👍','🙏','🎉','🔥','💯','✨','😎','🥳','😭','🤔','👏','💪','🌟','🎁','🍕','☕','🐶','🐱','🌈','⚡','💎','🎵','🍀','🌺','🦋','👑'];
+
+const EMOJI_TABS = [
+  { id: 'smileys', label: '😀' },
+  { id: 'gestures', label: '👋' },
+  { id: 'hearts', label: '❤️' },
+  { id: 'animals', label: '🐶' },
+  { id: 'food', label: '🍕' },
+  { id: 'activities', label: '⚽' },
+  { id: 'objects', label: '📱' },
+  { id: 'symbols', label: '💯' },
+  { id: 'flags', label: '🏁' },
+  { id: 'stickers', label: '🎨' }
+];
+
+// ============================================================
+//  STATE
+// ============================================================
+const db = new Dexie('toko_app_db');
+db.version(2).stores({
+  notes:    '++id, date',
+  photos:   '++id, date',
+  meta:     'key',
+  messages: '++id, date, type'
+});
+
+let cryptoKey = null;
+let lockTimer = null;
+let currentStream = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recording = false;
+let recInterval = null;
+let recSeconds = 0;
+let peer = null;
+let activeCall = null;
+let remoteAudio = null;
+let isMuted = false;
+let emojiTab = 'smileys';
+const IDLE_MS = 3 * 60 * 1000;
+const HIDDEN_GRACE_MS = 30 * 1000;
+
+const $ = (s) => document.querySelector(s);
+
+// ============================================================
+//  AUTH
+// ============================================================
+async function hasPIN() { return !!(await db.meta.get('pin')); }
+async function setupPIN(pin) {
+  const salt = await CRYPTO.createSalt();
+  const key = await CRYPTO.deriveKey(pin, salt);
+  const verifier = await CRYPTO.makeVerifier(key);
+  await db.meta.put({ key: 'pin', salt: CRYPTO.bufToB64(salt), verifier });
+  return key;
+}
+async function verifyPIN(pin) {
+  const rec = await db.meta.get('pin');
+  if (!rec) return null;
+  const salt = new Uint8Array(CRYPTO.b64ToBuf(rec.salt));
+  const key = await CRYPTO.deriveKey(pin, salt);
+  return (await CRYPTO.checkVerifier(key, rec.verifier)) ? key : null;
+}
+
+function showMainApp() {
+  $('#lockScreen').classList.add('hidden');
+  $('#main').classList.add('visible');
+  scheduleAutoLock();
+  initApp();
+}
+function showLockScreen(mode) {
+  $('#lockScreen').classList.remove('hidden');
+  $('#main').classList.remove('visible');
+  const title = $('#lockTitle'), msg = $('#lockMsg'), input = $('#pinInput'), btn = $('#unlockBtn');
+  if (mode === 'setup') {
+    title.textContent = '🔐 Buat PIN';
+    msg.textContent = 'PIN baru (min 6 digit) untuk mengenkripsi';
+    input.placeholder = 'PIN baru';
+    btn.textContent = 'Buat PIN';
+  } else {
+    title.textContent = '🔒 Terkunci';
+    msg.textContent = 'Masukkan PIN untuk membuka';
+    input.placeholder = '••••';
+    btn.textContent = 'Buka';
+  }
+  input.value = '';
+  setTimeout(() => input.focus(), 100);
+}
+function scheduleAutoLock() {
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(() => {
+    cryptoKey = null;
+    stopCamera();
+    closeCall();
+    showLockScreen('unlock');
+  }, IDLE_MS);
+}
+
+// ============================================================
+//  HELPERS
+// ============================================================
+function formatTime(iso) {
+  return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+function formatDuration(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ':' + s.toString().padStart(2, '0');
+}
+function stopCamera() {
+  if (currentStream) {
+    currentStream.getTracks().forEach(t => t.stop());
+    currentStream = null;
+  }
+}
+function closeCall() {
+  if (activeCall) {
+    try { activeCall.close(); } catch {}
+    activeCall = null;
+  }
+  stopCamera();
+  if (remoteAudio) {
+    try { remoteAudio.pause(); remoteAudio.srcObject = null; } catch {}
+    remoteAudio = null;
+  }
+  isMuted = false;
+  $('#callModal').hidden = true;
+}
+function stopRecordingInternal() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch {}
+  }
+  recording = false;
+  clearInterval(recInterval);
+}
+
+// ============================================================
+//  PEERJS
+// ============================================================
+function loadPeerJS() {
+  return new Promise((resolve, reject) => {
+    if (window.Peer) return resolve();
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('PeerJS load failed'));
+    document.head.appendChild(s);
+  });
+}
+
+let roomId = localStorage.getItem('chatRoomId');
+if (!roomId) {
+  roomId = 'room_' + Math.random().toString(36).substring(2, 10);
+  localStorage.setItem('chatRoomId', roomId);
+}
+const PEER_ID = 'tokoapp_' + roomId;
+
+function initPeer() {
+  if (peer || !window.Peer) return;
+  peer = new Peer(PEER_ID, { debug: 0 });
+  peer.on('open', (id) => {
+    $('#contactStatus').textContent = 'ID: ' + id.slice(-6);
+  });
+  peer.on('call', async (call) => {
+    const ok = await UI.confirmDialog('Panggilan dari ' + call.peer.slice(-6) + '. Terima?');
+    if (ok) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        currentStream = stream;
+        call.answer(stream);
+        activeCall = call;
+        showCallModal(call.peer.slice(-6), 'Terhubung');
+        setupCallEvents(call);
+      } catch (err) {
+        UI.toast('Tidak bisa akses mikrofon', 'error');
+        call.close();
+      }
+    } else {
+      call.close();
+    }
+  });
+  peer.on('error', (err) => {
+    if (err.type === 'peer-unavailable') UI.toast('Kontak tidak tersedia', 'error');
+    closeCall();
+  });
+}
+function setupCallEvents(call) {
+  call.on('stream', (rs) => {
+    if (!remoteAudio) { remoteAudio = new Audio(); remoteAudio.autoplay = true; }
+    remoteAudio.srcObject = rs;
+    remoteAudio.play().catch(() => {});
+    $('#callStatus').textContent = 'Terhubung';
+  });
+  call.on('close', closeCall);
+  call.on('error', closeCall);
+}
+function showCallModal(name, status) {
+  $('#callName').textContent = name;
+  $('#callStatus').textContent = status;
+  $('#callModal').hidden = false;
+}
+async function startCall() {
+  try { await loadPeerJS(); } catch { UI.toast('Gagal load PeerJS', 'error'); return; }
+  initPeer();
+  const target = await UI.promptDialog('Masukkan ID kontak (6 digit terakhir):', { placeholder: 'a3f9b2', minLen: 4 });
+  if (!target) return;
+  const clean = target.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const fullId = 'tokoapp_room_' + clean;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    currentStream = stream;
+    const call = peer.call(fullId, stream);
+    if (!call) { UI.toast('Gagal memanggil', 'error'); stopCamera(); return; }
+    activeCall = call;
+    showCallModal(clean, 'Memanggil...');
+    setupCallEvents(call);
+  } catch (err) {
+    UI.toast('Tidak bisa akses mikrofon', 'error');
+  }
+}
+
+// ============================================================
+//  MESSAGES
+// ============================================================
+async function renderMessages() {
+  const list = await db.messages.orderBy('date').toArray();
+  const messages = $('#messages');
+  if (!list.length) {
+    messages.innerHTML = '<div class="empty-chat"><span class="big">💬</span>Mulai percakapan<br><small style="font-size:12px;opacity:.7;">Semua pesan terenkripsi lokal</small></div>';
+    return;
+  }
+  messages.innerHTML = '';
+  for (const m of list) {
+    const el = await renderMessage(m);
+    if (el) messages.appendChild(el);
+  }
+  messages.scrollTop = messages.scrollHeight;
+}
+
+async function renderMessage(m) {
+  let data;
+  try {
+    const plain = await CRYPTO.decrypt(cryptoKey, m.cipher);
+    data = JSON.parse(plain);
+  } catch { return null; }
+
+  const div = document.createElement('div');
+  div.className = 'msg ' + (m.from === 'me' ? 'me' : 'them');
+
+  if (data.type === 'text') {
+    div.innerHTML = UI.escapeHtml(data.text).replace(/\n/g, '<br>') + '<span class="msg-time">' + formatTime(m.date) + '</span>';
+  } else if (data.type === 'emoji') {
+    div.classList.add('msg-emoji');
+    div.innerHTML = data.emoji + '<span class="msg-time" style="opacity:.5;">' + formatTime(m.date) + '</span>';
+  } else if (data.type === 'sticker') {
+    div.classList.add('msg-sticker');
+    div.innerHTML = data.sticker;
+  } else if (data.type === 'voice') {
+    div.classList.add('msg-voice');
+    const audioId = 'audio_' + m.id;
+    const bars = Array.from({ length: 20 }, () => '<span style="height:' + (8 + Math.random() * 14) + 'px;"></span>').join('');
+    div.innerHTML = '<button class="voice-play" data-audio="' + audioId + '">▶</button>' +
+      '<div class="voice-wave">' + bars + '</div>' +
+      '<span class="voice-duration">' + formatDuration(data.duration || 0) + '</span>' +
+      '<audio id="' + audioId + '" preload="metadata"></audio>' +
+      '<span class="msg-time" style="display:none;">' + formatTime(m.date) + '</span>';
+    try {
+      const blob = await CRYPTO.decryptBlob(cryptoKey, m.blob);
+      const url = URL.createObjectURL(blob);
+      const audio = div.querySelector('#' + audioId);
+      audio.src = url;
+      const playBtn = div.querySelector('.voice-play');
+      playBtn.addEventListener('click', () => {
+        if (audio.paused) {
+          document.querySelectorAll('audio').forEach(a => a.pause());
+          document.querySelectorAll('.voice-play').forEach(b => { b.textContent = '▶'; b.classList.remove('playing'); });
+          audio.play();
+          playBtn.textContent = '⏸';
+          playBtn.classList.add('playing');
+        } else {
+          audio.pause();
+          playBtn.textContent = '▶';
+          playBtn.classList.remove('playing');
+        }
+      });
+      audio.addEventListener('ended', () => { playBtn.textContent = '▶'; playBtn.classList.remove('playing'); });
+    } catch (e) { console.error(e); }
+  }
+  return div;
+}
+
+async function saveMessage(type, payload, blob) {
+  const data = { type, ...payload };
+  const cipher = await CRYPTO.encrypt(cryptoKey, JSON.stringify(data));
+  const rec = { from: 'me', cipher, date: new Date().toISOString(), type };
+  if (blob) rec.blob = blob;
+  await db.messages.add(rec);
+  await renderMessages();
+}
+
+async function sendText() {
+  const input = $('#chatInput');
+  const text = UI.sanitizeText(input.value, 5000);
+  if (!text) return;
+  const isEmoji = /^[\p{Emoji}\s]+$/u.test(text) && text.trim().length <= 8;
+  const type = isEmoji ? 'emoji' : 'text';
+  const payload = isEmoji ? { emoji: text.trim() } : { text };
+  await saveMessage(type, payload);
+  input.value = '';
+  input.style.height = 'auto';
+  input.focus();
+}
+
+async function sendSticker(sticker) {
+  await saveMessage('sticker', { sticker });
+}
+
+// ============================================================
+//  RECORDING
+// ============================================================
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+    mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      if (blob.size > 0) {
+        try {
+          const enc = await CRYPTO.encryptBlob(cryptoKey, blob);
+          await saveMessage('voice', { duration: recSeconds }, enc);
+          UI.toast('Pesan suara tersimpan', 'success');
+        } catch (e) { UI.toast('Gagal simpan suara', 'error'); }
+      }
+    };
+    mediaRecorder.start();
+    recording = true;
+    recSeconds = 0;
+    $('#recordingBar').hidden = false;
+    $('#btnMic').classList.add('recording');
+    $('#btnMic').textContent = '⏹';
+    $('#recTime').textContent = '0:00';
+    recInterval = setInterval(() => {
+      recSeconds++;
+      $('#recTime').textContent = formatDuration(recSeconds);
+    }, 1000);
+  } catch (err) {
+    UI.toast('Tidak bisa akses mikrofon', 'error');
+  }
+}
+function stopRecording() {
+  stopRecordingInternal();
+  $('#recordingBar').hidden = true;
+  $('#btnMic').classList.remove('recording');
+  $('#btnMic').textContent = '🎤';
+}
+
+// ============================================================
+//  EMOJI PICKER
+// ============================================================
+function renderEmojiTabs() {
+  $('#emojiTabs').innerHTML = EMOJI_TABS.map(t =>
+    '<button class="emoji-tab' + (t.id === emojiTab ? ' active' : '') + '" data-tab="' + t.id + '">' + t.label + '</button>'
+  ).join('');
+  $('#emojiTabs').querySelectorAll('.emoji-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      emojiTab = btn.dataset.tab;
+      renderEmojiTabs();
+      renderEmojiGrid();
+    });
+  });
+}
+function renderEmojiGrid() {
+  const grid = $('#emojiGrid');
+  if (emojiTab === 'stickers') {
+    grid.innerHTML = STICKERS.map(s => '<button class="emoji-item sticker" data-sticker="' + s + '">' + s + '</button>').join('');
+    grid.querySelectorAll('[data-sticker]').forEach(btn => {
+      btn.addEventListener('click', () => { sendSticker(btn.dataset.sticker); toggleEmojiPicker(false); });
+    });
+  } else {
+    const list = EMOJI_DATA[emojiTab] || [];
+    grid.innerHTML = list.map(e => '<button class="emoji-item" data-emoji="' + e + '">' + e + '</button>').join('');
+    grid.querySelectorAll('[data-emoji]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $('#chatInput').value += btn.dataset.emoji;
+        $('#chatInput').focus();
+      });
+    });
+  }
+}
+function toggleEmojiPicker(show) {
+  if (show === undefined) show = !$('#emojiPicker').classList.contains('show');
+  $('#emojiPicker').classList.toggle('show', show);
+}
+
+// ============================================================
+//  INIT APP
+// ============================================================
+let appInit = false;
+async function initApp() {
+  if (appInit) return;
+  appInit = true;
+
+  $('#contactName').textContent = 'Kontak';
+  $('#contactStatus').textContent = 'ID: ' + PEER_ID.slice(-6);
+
+  // Emoji
+  renderEmojiTabs();
+  renderEmojiGrid();
+
+  // Send
+  $('#btnSend').addEventListener('click', sendText);
+  $('#chatInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+  });
+  $('#chatInput').addEventListener('input', (e) => {
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  });
+
+  // Emoji
+  $('#btnEmoji').addEventListener('click', () => toggleEmojiPicker());
+
+  // Mic
+  $('#btnMic').addEventListener('click', () => {
+    if (recording) stopRecording();
+    else startRecording();
+  });
+
+  // Call
+  $('#btnCall').addEventListener('click', startCall);
+  $('#btnEndCall').addEventListener('click', closeCall);
+  $('#btnMute').addEventListener('click', () => {
+    if (!currentStream) return;
+    isMuted = !isMuted;
+    currentStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+    $('#btnMute').classList.toggle('active', isMuted);
+    $('#btnMute').textContent = isMuted ? '🔇' : '🎤';
+  });
+
+  // Outside click emoji
+  document.addEventListener('click', (e) => {
+    const picker = $('#emojiPicker');
+    const btnEmoji = $('#btnEmoji');
+    if (!picker.contains(e.target) && e.target !== btnEmoji && !btnEmoji.contains(e.target)) {
+      picker.classList.remove('show');
+    }
+  });
+
+  // Render messages
+  await renderMessages();
+
+  // Load PeerJS
+  loadPeerJS().then(() => initPeer()).catch(() => {});
+}
+
+// ============================================================
+//  BOOT
+// ============================================================
+window.addEventListener('DOMContentLoaded', async () => {
+  const hasPin = await hasPIN();
+  showLockScreen(hasPin ? 'unlock' : 'setup');
+
+  $('#unlockBtn').addEventListener('click', async () => {
+    const pin = $('#pinInput').value.trim();
+    if (pin.length < 6) { UI.toast('PIN minimal 6 digit', 'warn'); return; }
+    const isSetup = !(await hasPIN());
+    if (isSetup) {
+      const pin2 = await UI.promptDialog('Konfirmasi PIN:', { type: 'password', minLen: 6, placeholder: '••••••' });
+      if (!pin2) return;
+      if (pin !== pin2) { UI.toast('PIN tidak cocok', 'error'); return; }
+      try { cryptoKey = await setupPIN(pin); UI.toast('PIN dibuat!', 'success'); showMainApp(); }
+      catch (e) { console.error(e); UI.toast('Gagal buat PIN', 'error'); }
+    } else {
+      try {
+        const key = await verifyPIN(pin);
+        if (!key) { UI.toast('PIN salah', 'error'); $('#pinInput').value = ''; return; }
+        cryptoKey = key;
+        showMainApp();
+      } catch (e) { console.error(e); UI.toast('Gagal buka', 'error'); }
+    }
+  });
+
+  $('#pinInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('#unlockBtn').click();
+  });
+
+  ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
+    document.addEventListener(evt, () => { if (cryptoKey) scheduleAutoLock(); }, { passive: true });
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && cryptoKey) {
+      setTimeout(() => {
+        if (document.hidden && cryptoKey) {
+          cryptoKey = null;
+          stopCamera();
+          closeCall();
+          showLockScreen('unlock');
+        }
+      }, HIDDEN_GRACE_MS);
+    }
+  });
+});
+</script>
+</body>
+</html>
