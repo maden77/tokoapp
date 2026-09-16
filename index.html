@@ -4,92 +4,50 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#6366f1">
-<meta name="description" content="Toko App lokal-first: Catatan terenkripsi & Kamera">
+<meta name="description" content="Toko App lokal-first: Catatan, Kamera, Kalkulator, Pesan">
 <meta name="color-scheme" content="dark light">
 <meta name="referrer" content="no-referrer">
-
-<!-- CSP ketat: tanpa CDN, tanpa inline script -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self';
-  style-src 'self' 'unsafe-inline';
+  style-src 'self' 
   img-src 'self' blob: data:;
   media-src 'self' blob:;
-  connect-src 'self';
+  connect-src 'self' wss://0.peerjs.com https://0.peerjs.com;
   font-src 'self';
   object-src 'none';
   base-uri 'self';
   form-action 'self';
-  frame-ancestors 'none';
   worker-src 'self';
   manifest-src 'self';
   upgrade-insecure-requests;
 ">
-
-<!-- iOS PWA -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Toko App">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
-
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" href="icons/icon-192.png">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="stylesheet" href="shared/style.css">
 <title>Toko App</title>
 </head>
 <body>
 
-<header>
-  <h1>🏪 Toko App</h1>
-  <p>Aplikasi lokal-first, aman & offline</p>
-</header>
+<!-- Root untuk SPA -->
+<div id="app-root"></div>
 
-<input class="search" type="search" placeholder="🔍 Cari aplikasi..." id="searchInput"
-       aria-label="Cari aplikasi" autocomplete="off">
-
-<div class="section-title">Semua Aplikasi</div>
-
-<main class="app-list" id="appList" role="list">
-
-  <a class="app-card" href="app.html?app=catatan" data-name="catatan" role="listitem">
-    <div class="app-icon icon-catatan" aria-hidden="true">📝</div>
-    <div class="app-info">
-      <h3>Catatan</h3>
-      <p>Terenkripsi AES-256 • PIN lock</p>
-      <div class="app-rating">⭐ 4.9 • Gratis</div>
-    </div>
-  </a>
-  <a class="app-card" href="app.html?app=kalkulator" data-name="kalkulator" role="listitem">
-  <div class="app-icon icon-kalkulator" aria-hidden="true">🧮</div>
-  <div class="app-info">
-    <h3>Kalkulator</h3>
-    <p>Hitung & simpan riwayat</p>
-    <div class="app-rating">⭐ 4.9 • Gratis</div>
-  </div>
-</a>
-    <a class="app-card" href="app.html?app=kamera" data-name="kamera" role="listitem">
-    <div class="app-icon icon-kamera" aria-hidden="true">📷</div>
-    <div class="app-info">
-      <h3>Kamera</h3>
-      <p>Terenkripsi • Simpan lokal</p>
-      <div class="app-rating">⭐ 4.8 • Gratis</div>
-    </div>
-  </a>
-
-  <a class="app-card" href="app.html?app=pengaturan" data-name="pengaturan" role="listitem">
-    <div class="app-icon icon-setting" aria-hidden="true">⚙️</div>
-    <div class="app-info">
-      <h3>Pengaturan</h3>
-      <p>Backup, restore & keamanan</p>
-      <div class="app-rating">🔒 Lokal</div>
-    </div>
-  </a>
-
-</main>
-
-<button class="btn-install" id="btnInstall" aria-label="Install aplikasi">📥 Install Toko App</button>
-
-<script src="assets/ui.js"></script>
-<script src="assets/home.js"></script>
+<!-- Script loader -->
+<script src="shared/dexie.min.js"></script>
+<script src="shared/ui.js"></script>
+<script src="shared/crypto.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/components.js"></script>
+<script src="shared/router.js"></script>
+<script>
+  // Init router setelah semua loaded
+  window.addEventListener('DOMContentLoaded', () => {
+    Router.init();
+  });
+</script>
 </body>
 </html>
