@@ -48,6 +48,20 @@
   window.addEventListener('DOMContentLoaded', () => {
     Router.init();
   });
+  <script>
+  // SEMENTARA: hapus setelah test
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      const lock = document.querySelector('lock-screen');
+      if (lock) {
+        console.log('lock-screen ditemukan, hide sementara');
+        lock.hidden = true;
+      } else {
+        console.log('lock-screen TIDAK ADA');
+      }
+    }, 2000);
+  });
+</script>
 </script>
 </body>
 </html>
