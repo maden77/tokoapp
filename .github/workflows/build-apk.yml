@@ -15,6 +15,7 @@ env:
   ANDROID_SDK_ROOT: /home/runner/android-sdk
   ANDROID_HOME: /home/runner/android-sdk
   CMDLINE_TOOLS_VERSION: '11076708'
+  GRADLE_HOME: /opt/gradle
 
 jobs:
   build:
@@ -38,7 +39,6 @@ jobs:
       - name: 🤖 Setup Android SDK (Manual)
         run: |
           set -e
-          echo "📥 Download Android command-line tools..."
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
           cd /tmp
           wget -q "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" -O cmdline-tools.zip
@@ -54,22 +54,36 @@ jobs:
           sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
           echo "✅ SDK packages installed"
 
-      - name: 🔧 Install Cordova
-        run: |
-          npm install -g cordova@${{ env.CORDOVA_VERSION }}
-          cordova --version
-          echo "✅ Cordova installed"
-
-      - name: 🎯 Install Gradle ${{ env.GRADLE_VERSION }}
+      - name: 🎯 Install Gradle ${{ env.GRADLE_VERSION }} (Override System)
         run: |
           set -e
           echo "📥 Downloading Gradle ${{ env.GRADLE_VERSION }}..."
           cd /tmp
           wget -q "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -O gradle.zip
-          unzip -q gradle.zip -d /opt
-          mv /opt/gradle-${GRADLE_VERSION} /opt/gradle
-          echo "✅ Gradle installed at /opt/gradle"
+          sudo unzip -q gradle.zip -d /opt
+          sudo mv /opt/gradle-${GRADLE_VERSION} /opt/gradle
+          sudo chmod +x /opt/gradle/bin/gradle
+          
+          # Verify
           /opt/gradle/bin/gradle --version
+          
+          echo "🗑️ Removing system Gradle 9.x to force 8.7..."
+          sudo rm -rf /usr/share/gradle-* || true
+          sudo rm -f /usr/bin/gradle || true
+          sudo rm -f /usr/local/bin/gradle || true
+          
+          # Symlink /usr/local/bin/gradle → /opt/gradle/bin/gradle
+          sudo ln -sf /opt/gradle/bin/gradle /usr/local/bin/gradle
+          
+          echo "🔍 Which gradle:"
+          which gradle
+          gradle --version
+
+      - name: 🔧 Install Cordova
+        run: |
+          npm install -g cordova@${{ env.CORDOVA_VERSION }}
+          cordova --version
+          echo "✅ Cordova installed"
 
       - name: 🔐 Restore Keystore
         env:
@@ -115,10 +129,8 @@ jobs:
           set -e
           cd /tmp
           rm -rf tokoapp
-          echo "🔨 Running cordova create..."
           cordova create tokoapp com.tokoapp.pwa TokoApp
           echo "✅ Project created"
-          ls -la /tmp/tokoapp/
 
       - name: 📝 Configure Cordova for PWA
         run: |
@@ -168,7 +180,6 @@ jobs:
           HTMLEOF
           
           sed -i "s|PWA_URL_PLACEHOLDER|${{ steps.url.outputs.url }}|g" www/index.html
-          
           echo "✅ Config & www ready"
 
       - name: ➕ Add Android Platform
@@ -176,10 +187,6 @@ jobs:
           cd /tmp/tokoapp
           cordova platform add android@${{ env.CORDOVA_ANDROID_VERSION }}
           echo "✅ Android platform added"
-          echo "📁 Checking gradle wrapper folder:"
-          ls -la platforms/android/ | head -20
-          echo "📁 Checking gradle wrapper content:"
-          ls -la platforms/android/gradle/wrapper/ || echo "⚠️ gradle/wrapper folder not found yet"
 
       - name: 📝 Setup Signing Config
         run: |
@@ -207,16 +214,11 @@ jobs:
           
           cp build-extras.gradle platforms/android/app/build-extras.gradle
           echo "✅ build-extras.gradle placed"
-          ls -la platforms/android/app/
 
-      - name: 📝 Force Gradle Version
+      - name: 📝 Force Gradle Version (Wrapper)
         run: |
           cd /tmp/tokoapp/platforms/android
-          
-          # Buat folder gradle/wrapper jika belum ada
           mkdir -p gradle/wrapper
-          
-          # Overwrite gradle-wrapper.properties untuk pakai Gradle 8.7
           cat > gradle/wrapper/gradle-wrapper.properties << 'WRAPPEREOF'
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
@@ -226,11 +228,7 @@ jobs:
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
           WRAPPEREOF
-          
-          echo "✅ Gradle wrapper set to 8.7"
-          echo "📁 Files in gradle/wrapper/:"
-          ls -la gradle/wrapper/
-          echo "📄 Content:"
+          echo "✅ Wrapper set to 8.7"
           cat gradle/wrapper/gradle-wrapper.properties
 
       - name: 🔨 Build APK (Cordova)
@@ -239,10 +237,16 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           GRADLE_USER_HOME: /tmp/gradle-home
+          GRADLE_HOME: /opt/gradle
         run: |
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
-          cd /tmp/tokoapp
+          # PATH: prioritaskan /opt/gradle/bin paling depan
+          export PATH="/opt/gradle/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           
+          echo "🔍 Which gradle:"
+          which gradle
+          gradle --version
+          
+          cd /tmp/tokoapp
           echo "🔨 Building APK with Cordova..."
           cordova build android --release -- --packageType=apk
           
