@@ -1,29 +1,43 @@
 /* ============================================================
-   Modul Auth: PIN, Lock, Auto-lock — versi SPA
+   Modul Auth: PIN, Lock, Auto-lock
+   Versi: Multi-file HTML (bukan SPA)
    ============================================================ */
 'use strict';
 
 const Auth = (() => {
+  // ---------- Database ----------
   const db = new Dexie('toko_app_db');
   db.version(2).stores({
-    notes:  '++id, date',
-    photos: '++id, date',
-    meta:   'key',
+    notes:    '++id, date',
+    photos:   '++id, date',
+    meta:     'key',
     messages: '++id, date, type'
   });
 
+  // ---------- State ----------
   let cryptoKey = null;
   let lockTimer = null;
-  const IDLE_MS = 3 * 60 * 1000;
-  const HIDDEN_GRACE_MS = 30_000;
-  let onReadyCallback = null;
+  let initialized = false;
+  const IDLE_MS = 3 * 60 * 1000;        // 3 menit idle
+  const HIDDEN_GRACE_MS = 30 * 1000;    // 30 detik di background
 
-  function setOnReady(cb) { onReadyCallback = cb; }
+  // ---------- Helpers ----------
+  function $(sel) { return document.querySelector(sel); }
 
-  function isLocked() { return !cryptoKey; }
+  function showLock() {
+    const lock = $('#lockScreen');
+    const main = $('#main');
+    if (lock) lock.hidden = false;
+    if (main) main.hidden = true;
+    const inp = $('#pinInput');
+    if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 100); }
+  }
 
-  function fireReady() {
-    if (onReadyCallback) onReadyCallback();
+  function hideLock() {
+    const lock = $('#lockScreen');
+    const main = $('#main');
+    if (lock) lock.hidden = true;
+    if (main) main.hidden = false;
   }
 
   function scheduleAutoLock() {
@@ -33,20 +47,25 @@ const Auth = (() => {
 
   function lockApp() {
     cryptoKey = null;
-    const lockEl = document.querySelector('lock-screen');
-    if (lockEl) lockEl.show();
+    showLock();
     bindUnlockHandler();
   }
 
+  // ---------- PIN Management ----------
   async function hasPIN() {
-    return !!(await db.meta.get('pin'));
+    const rec = await db.meta.get('pin');
+    return !!rec;
   }
 
   async function setupPIN(pin) {
     const salt = await CRYPTO.createSalt();
     const key = await CRYPTO.deriveKey(pin, salt);
     const verifier = await CRYPTO.makeVerifier(key);
-    await db.meta.put({ key: 'pin', salt: CRYPTO.bufToB64(salt), verifier });
+    await db.meta.put({
+      key: 'pin',
+      salt: CRYPTO.bufToB64(salt),
+      verifier
+    });
     return key;
   }
 
@@ -55,76 +74,172 @@ const Auth = (() => {
     if (!rec) return null;
     const salt = new Uint8Array(CRYPTO.b64ToBuf(rec.salt));
     const key = await CRYPTO.deriveKey(pin, salt);
-    return (await CRYPTO.checkVerifier(key, rec.verifier)) ? key : null;
+    const ok = await CRYPTO.checkVerifier(key, rec.verifier);
+    return ok ? key : null;
   }
 
+  // ---------- Bind handlers ----------
   function bindSetupHandler() {
-    const lockEl = document.querySelector('lock-screen');
-    if (!lockEl) return;
-    
-    lockEl.setMode('setup');
-    lockEl.onSubmit(async (pin) => {
-      if (pin.length < 6) { UI.toast('PIN minimal 6 digit', 'warn'); return; }
-      const pin2 = await UI.promptDialog('Konfirmasi PIN:', { type: 'password', minLen: 6, placeholder: '••••••' });
-      if (pin !== pin2) { UI.toast('PIN tidak cocok', 'error'); return; }
-      cryptoKey = await setupPIN(pin);
-      lockEl.hide();
-      scheduleAutoLock();
-      fireReady();
-    });
+    const btn = $('#unlockBtn');
+    const inp = $('#pinInput');
+    const msg = $('#lockMsg');
+    if (!btn || !inp) return;
+
+    if (msg) msg.textContent = 'Buat PIN baru (min 6 digit) untuk mengenkripsi data';
+    inp.placeholder = 'PIN baru';
+    btn.textContent = 'Buat PIN';
+
+    btn.onclick = async () => {
+      const pin = inp.value.trim();
+      if (pin.length < 6) {
+        UI.toast('PIN minimal 6 digit', 'warn');
+        return;
+      }
+      const pin2 = await UI.promptDialog('Konfirmasi PIN:', {
+        type: 'password',
+        minLen: 6,
+        placeholder: '••••••'
+      });
+      if (!pin2) return;
+      if (pin !== pin2) {
+        UI.toast('PIN tidak cocok', 'error');
+        return;
+      }
+
+      try {
+        cryptoKey = await setupPIN(pin);
+        hideLock();
+        scheduleAutoLock();
+        window.dispatchEvent(new Event('app-ready'));
+      } catch (err) {
+        console.error('Setup PIN error:', err);
+        UI.toast('Gagal membuat PIN', 'error');
+      }
+    };
+
+    inp.onkeydown = (e) => {
+      if (e.key === 'Enter') btn.click();
+    };
   }
 
   function bindUnlockHandler() {
-    const lockEl = document.querySelector('lock-screen');
-    if (!lockEl) return;
-    
-    lockEl.setMode('unlock');
-    lockEl.onSubmit(async (pin) => {
+    const btn = $('#unlockBtn');
+    const inp = $('#pinInput');
+    const msg = $('#lockMsg');
+    if (!btn || !inp) return;
+
+    if (msg) msg.textContent = 'Masukkan PIN untuk membuka';
+    inp.placeholder = '••••';
+    btn.textContent = 'Buka';
+
+    btn.onclick = async () => {
+      const pin = inp.value.trim();
       if (!pin) return;
-      const key = await verifyPIN(pin);
-      if (!key) { UI.toast('PIN salah', 'error'); lockEl.clear(); return; }
-      cryptoKey = key;
-      lockEl.hide();
-      scheduleAutoLock();
-      fireReady();
+
+      try {
+        const key = await verifyPIN(pin);
+        if (!key) {
+          UI.toast('PIN salah', 'error');
+          inp.value = '';
+          return;
+        }
+        cryptoKey = key;
+        hideLock();
+        scheduleAutoLock();
+        window.dispatchEvent(new Event('app-ready'));
+      } catch (err) {
+        console.error('Unlock error:', err);
+        UI.toast('Gagal membuka', 'error');
+      }
+    };
+
+    inp.onkeydown = (e) => {
+      if (e.key === 'Enter') btn.click();
+    };
+  }
+
+  // ---------- Auto-lock listeners ----------
+  function bindAutoLockListeners() {
+    ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
+      document.addEventListener(evt, () => {
+        if (cryptoKey) scheduleAutoLock();
+      }, { passive: true });
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && cryptoKey) {
+        setTimeout(() => {
+          if (document.hidden && cryptoKey) lockApp();
+        }, HIDDEN_GRACE_MS);
+      }
     });
   }
 
+  // ---------- Init ----------
   async function init() {
-    ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
-      document.addEventListener(evt, () => { if (cryptoKey) scheduleAutoLock(); }, { passive: true });
-    });
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden && cryptoKey) {
-        setTimeout(() => { if (document.hidden && cryptoKey) lockApp(); }, HIDDEN_GRACE_MS);
-      }
-    });
+    if (initialized) return;
+    initialized = true;
 
+    // Anti clickjacking
     if (window.top !== window.self) {
       document.documentElement.innerHTML = 'Akses ditolak.';
       throw new Error('Framed');
     }
 
-    const lockEl = document.querySelector('lock-screen');
-    if (!(await hasPIN())) {
-      if (!lockEl) return;
-      lockEl.show();
-      bindSetupHandler();
+    // Auto-lock listeners
+    bindAutoLockListeners();
+
+    // Cek apakah halaman ini punya lock screen
+    const lockScreen = $('#lockScreen');
+    if (!lockScreen) {
+      // Halaman tanpa lock (mis. home page)
+      // Tidak perlu apa-apa
       return;
     }
-    if (!lockEl) return;
-    lockEl.show();
-    bindUnlockHandler();
+
+    // Cek apakah sudah ada PIN
+    const hasPin = await hasPIN();
+
+    if (!hasPin) {
+      // Mode setup: buat PIN baru
+      lockScreen.hidden = false;
+      bindSetupHandler();
+    } else {
+      // Mode unlock: minta PIN
+      lockScreen.hidden = false;
+      bindUnlockHandler();
+    }
   }
 
-  return {
+  // ---------- Public API ----------
+  const api = {
     db,
     init,
     getKey: () => cryptoKey,
     lock: lockApp,
-    isLocked,
-    setOnReady
+    isLocked: () => !cryptoKey,
+    hasPIN,
+    setupPIN,
+    verifyPIN
   };
+
+  return api;
 })();
 
 window.Auth = Auth;
+
+// ---------- Auto-init ----------
+// Panggil init() setelah DOM ready, tapi hanya jika ada lockScreen
+// atau kalau dipanggil manual oleh halaman
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    // Hanya auto-init kalau ada lockScreen di halaman
+    if (document.getElementById('lockScreen')) {
+      Auth.init().catch(err => console.error('Auth init error:', err));
+    }
+  });
+} else {
+  if (document.getElementById('lockScreen')) {
+    Auth.init().catch(err => console.error('Auth init error:', err));
+  }
+}
