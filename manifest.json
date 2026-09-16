@@ -1,33 +1,71 @@
 {
   "name": "Toko App",
   "short_name": "TokoApp",
-  "description": "Aplikasi lokal-first: Catatan terenkripsi & Kamera",
+  "description": "Aplikasi lokal-first: Catatan, Kamera, Kalkulator, Pesan, Al-Qur'an, Perpustakaan & Konverter Uang",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "display_override": ["standalone"],
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#0f172a",
   "theme_color": "#6366f1",
   "orientation": "portrait",
   "lang": "id",
   "dir": "ltr",
-  "categories": ["productivity", "utilities"],
+  "categories": ["productivity", "utilities", "education", "books", "finance"],
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
     {
       "name": "Catatan",
-      "url": "./app.html?app=catatan",
-      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+      "short_name": "Catatan",
+      "url": "./app-catatan.html",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Kalkulator",
+      "short_name": "Kalkulator",
+      "url": "./app-kalkulator.html",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pesan",
+      "short_name": "Pesan",
+      "url": "./pesan.html",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Kamera",
-      "url": "./app.html?app=kamera",
-      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+      "short_name": "Kamera",
+      "url": "./app-kamera.html",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Al-Qur'an",
+      "short_name": "Al-Qur'an",
+      "url": "./alquran.html",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Perpustakaan",
+      "short_name": "Buku",
+      "url": "./perpustakaan.html",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Konverter Uang",
+      "short_name": "Uang",
+      "url": "./uang.html",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pengaturan",
+      "short_name": "Setelan",
+      "url": "./app-pengaturan.html",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
