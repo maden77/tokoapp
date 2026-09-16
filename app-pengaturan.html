@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#6366f1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; object-src 'none'; frame-ancestors 'none';">
+<link rel="manifest" href="manifest.json">
+<title>⚙️ Pengaturan — Toko App</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root { --bg:#0f172a; --text:#fff; --text-dim:#94a3b8; --border:rgba(255,255,255,.1); --primary:#6366f1; --accent:#a855f7; }
+  html, body { font-family:-apple-system,sans-serif; background:linear-gradient(135deg,var(--bg),#1e293b); color:var(--text); min-height:100vh; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:16px 20px; padding-top:calc(16px + env(safe-area-inset-top,0px)); background:rgba(15,23,42,.95); position:sticky; top:0; z-index:10; border-bottom:1px solid var(--border); }
+  .back { background:rgba(255,255,255,.1); border:none; color:#fff; width:38px; height:38px; border-radius:10px; font-size:18px; cursor:pointer; }
+  .topbar h1 { font-size:18px; }
+  .container { padding:20px; }
+  h3 { margin-bottom:12px; font-size:15px; }
+  .btn { margin-top:12px; width:100%; padding:14px; background:linear-gradient(90deg,#fbbf24,#f59e0b); border:none; border-radius:12px; color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
+  .btn.grad1 { background:linear-gradient(90deg,#6366f1,#a855f7); }
+  .btn.grad2 { background:linear-gradient(90deg,#f59e0b,#dc2626); }
+  .btn.grad3 { background:linear-gradient(90deg,#10b981,#059669); }
+  .btn.grad4 { background:linear-gradient(90deg,#0ea5e9,#0284c7); }
+  .btn.grad5 { background:linear-gradient(90deg,#7f1d1d,#dc2626); }
+  label.btn { display:block; text-align:center; }
+  .info { color:#94a3b8; font-size:13px; margin-bottom:12px; }
+  .footer { color:#64748b; font-size:11px; margin-top:24px; text-align:center; }
+  .lock-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; }
+  .lock-screen.hidden { display:none !important; }
+  .lock-box { width:100%; max-width:320px; text-align:center; }
+  .lock-box h2 { font-size:22px; margin-bottom:8px; }
+  .lock-box p { color:var(--text-dim); font-size:13px; margin-bottom:20px; }
+  .pin-input { width:100%; padding:16px; background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:12px; color:#fff; font-size:24px; letter-spacing:8px; text-align:center; outline:none; font-family:inherit; }
+  .lock-btn { margin-top:16px; width:100%; padding:14px; background:linear-gradient(90deg,var(--primary),var(--accent)); border:none; border-radius:12px; color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
+  .main-app { display:none; }
+  .main-app.visible { display:block; }
+</style>
+</head>
+<body>
+
+<div id="lockScreen" class="lock-screen">
+  <div class="lock-box">
+    <h2 id="lockTitle">🔐 Buat PIN</h2>
+    <p id="lockMsg">PIN baru (min 6 digit) untuk mengenkripsi</p>
+    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" maxlength="12" placeholder="PIN baru">
+    <button class="lock-btn" id="unlockBtn">Buat PIN</button>
+  </div>
+</div>
+
+<div id="main" class="main-app">
+  <div class="topbar">
+    <button class="back" onclick="location.href='index.html'">←</button>
+    <h1>⚙️ Pengaturan</h1>
+  </div>
+  <div class="container">
+    <h3>🔐 Keamanan</h3>
+    <button class="btn grad1" id="btnChangePIN">Ganti PIN</button>
+    <button class="btn grad2" id="btnLockNow">🔒 Kunci Sekarang</button>
+
+    <h3 style="margin-top:24px;">💾 Backup (Terenkripsi)</h3>
+    <p class="info">File backup dienkripsi dengan PIN Anda. Simpan di tempat aman.</p>
+    <button class="btn grad3" id="btnBackup">📤 Export Backup</button>
+    <label class="btn grad4">📥 Import Backup
+      <input type="file" id="fileImport" accept=".tokobak" hidden>
+    </label>
+
+    <h3 style="margin-top:24px;">🗑️ Zona Bahaya</h3>
+    <button class="btn grad5" id="btnWipe">Hapus Semua Data</button>
+
+    <p class="footer">Semua data tersimpan di perangkat. Tidak ada server.</p>
+  </div>
+</div>
+
+<script src="shared/dexie.min.js"></script>
+<script src="shared/ui.js"></script>
+<script src="shared/crypto.js"></script>
+
+<script>
+'use strict';
+
+const db = new Dexie('toko_app_db');
+db.version(2).stores({
+  notes:    '++id, date',
+  photos:   '++id, date',
+  meta:     'key',
+  messages: '++id, date, type'
+});
+
+let cryptoKey = null;
+let lockTimer = null;
+const IDLE_MS = 3 * 60 * 1000;
+const HIDDEN_GRACE_MS = 30 * 1000;
+const $ = (s) => document.querySelector(s);
+
+async function hasPIN() { return !!(await db.meta.get('pin')); }
+async function setupPIN(pin) {
+  const salt = await CRYPTO.createSalt();
+  const key = await CRYPTO.deriveKey(pin, salt);
+  const verifier = await CRYPTO.makeVerifier(key);
+  await db.meta.put({ key: 'pin', salt: CRYPTO.bufToB64(salt), verifier });
+  return key;
+}
+async function verifyPIN(pin) {
+  const rec = await db.meta.get('pin');
+  if (!rec) return null;
+  const salt = new Uint8Array(CRYPTO.b64ToBuf(rec.salt));
+  const key = await CRYPTO.deriveKey(pin, salt);
+  return (await CRYPTO.checkVerifier(key, rec.verifier)) ? key : null;
+}
+
+function showMainApp() {
+  $('#lockScreen').classList.add('hidden');
+  $('#main').classList.add('visible');
+  scheduleAutoLock();
+  initApp();
+}
+function showLockScreen(mode) {
+  $('#lockScreen').classList.remove('hidden');
+  $('#main').classList.remove('visible');
+  const title = $('#lockTitle'), msg = $('#lockMsg'), input = $('#pinInput'), btn = $('#unlockBtn');
+  if (mode === 'setup') {
+    title.textContent = '🔐 Buat PIN';
+    msg.textContent = 'PIN baru (min 6 digit) untuk mengenkripsi';
+    input.placeholder = 'PIN baru';
+    btn.textContent = 'Buat PIN';
+  } else {
+    title.textContent = '🔒 Terkunci';
+    msg.textContent = 'Masukkan PIN untuk membuka';
+    input.placeholder = '••••';
+    btn.textContent = 'Buka';
+  }
+  input.value = '';
+  setTimeout(() => input.focus(), 100);
+}
+function scheduleAutoLock() {
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(() => { cryptoKey = null; showLockScreen('unlock'); }, IDLE_MS);
+}
+
+let appInit = false;
+async function initApp() {
+  if (appInit) return;
+  appInit = true;
+
+  $('#btnLockNow').addEventListener('click', () => { cryptoKey = null; showLockScreen('unlock'); });
+
+  $('#btnChangePIN').addEventListener('click', async () => {
+    const oldPin = await UI.promptDialog('PIN lama:', { type: 'password', minLen: 6, placeholder: '••••••' });
+    if (!oldPin) return;
+    const rec = await db.meta.get('pin');
+    if (!rec) return;
+    const salt = new Uint8Array(CRYPTO.b64ToBuf(rec.salt));
+    const oldKey = await CRYPTO.deriveKey(oldPin, salt);
+    const ok = await CRYPTO.checkVerifier(oldKey, rec.verifier);
+    if (!ok) { UI.toast('PIN lama salah', 'error'); return; }
+
+    const newPin = await UI.promptDialog('PIN baru (min 6 digit):', { type: 'password', minLen: 6, placeholder: '••••••' });
+    if (!newPin) return;
+    const confirmPin = await UI.promptDialog('Konfirmasi PIN baru:', { type: 'password', minLen: 6, placeholder: '••••••' });
+    if (newPin !== confirmPin) { UI.toast('PIN tidak cocok', 'error'); return; }
+
+    try {
+      const newSalt = await CRYPTO.createSalt();
+      const newKey = await CRYPTO.deriveKey(newPin, newSalt);
+      const verifier = await CRYPTO.makeVerifier(newKey);
+
+      const notes = await db.notes.toArray();
+      for (const n of notes) {
+        const text = await CRYPTO.decrypt(oldKey, n.cipher);
+        n.cipher = await CRYPTO.encrypt(newKey, text);
+        await db.notes.put(n);
+      }
+      const photos = await db.photos.toArray();
+      for (const p of photos) {
+        const blob = await CRYPTO.decryptBlob(oldKey, p.blob);
+        p.blob = await CRYPTO.encryptBlob(newKey, blob);
+        await db.photos.put(p);
+      }
+      const messages = await db.messages.toArray();
+      for (const m of messages) {
+        const text = await CRYPTO.decrypt(oldKey, m.cipher);
+        m.cipher = await CRYPTO.encrypt(newKey, text);
+        if (m.blob) {
+          const blob = await CRYPTO.decryptBlob(oldKey, m.blob);
+          m.blob = await CRYPTO.encryptBlob(newKey, blob);
+        }
+        await db.messages.put(m);
+      }
+
+      await db.meta.put({ key: 'pin', salt: CRYPTO.bufToB64(newSalt), verifier });
+      cryptoKey = newKey;
+      UI.toast('PIN berhasil diubah', 'success');
+    } catch (e) { console.error(e); UI.toast('Gagal ubah PIN', 'error'); }
+  });
+
+  $('#btnBackup').addEventListener('click', async () => {
+    try {
+      const notes = await db.notes.toArray();
+      const rawPhotos = await db.photos.toArray();
+      const photos = await Promise.all(rawPhotos.map(async p => ({
+        date: p.date, data: CRYPTO.bufToB64(await p.blob.arrayBuffer())
+      })));
+      const rawMsgs = await db.messages.toArray();
+      const messages = await Promise.all(rawMsgs.map(async m => {
+        const obj = { date: m.date, type: m.type, cipher: m.cipher, from: m.from };
+        if (m.blob) obj.blobData = CRYPTO.bufToB64(await m.blob.arrayBuffer());
+        return obj;
+      }));
+      const meta = await db.meta.toArray();
+
+      const payload = { v: 1, exportedAt: new Date().toISOString(), meta, notes, photos, messages };
+      const cipher = await CRYPTO.encrypt(cryptoKey, JSON.stringify(payload));
+      const blob = new Blob([cipher], { type: 'application/octet-stream' });
+      UI.downloadFile('tokoapp-backup-' + Date.now() + '.tokobak', blob);
+      UI.toast('Backup terunduh', 'success');
+    } catch (e) { console.error(e); UI.toast('Gagal backup', 'error'); }
+  });
+
+  $('#fileImport').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const cipher = await file.text();
+      const json = await CRYPTO.decrypt(cryptoKey, cipher);
+      const payload = JSON.parse(json);
+
+      const ok = await UI.confirmDialog('Import akan MENGGANTI semua data. Lanjut?');
+      if (!ok) { e.target.value = ''; return; }
+
+      await db.transaction('rw', db.notes, db.photos, db.meta, db.messages, async () => {
+        await db.notes.clear();
+        await db.photos.clear();
+        await db.meta.clear();
+        await db.messages.clear();
+
+        for (const n of payload.notes) await db.notes.add(n);
+        for (const p of payload.photos) {
+          const bin = CRYPTO.b64ToBuf(p.data);
+          await db.photos.add({ blob: new Blob([bin]), date: p.date });
+        }
+        if (payload.messages) {
+          for (const m of payload.messages) {
+            const rec = { date: m.date, type: m.type, cipher: m.cipher, from: m.from };
+            if (m.blobData) {
+              const bin = CRYPTO.b64ToBuf(m.blobData);
+              rec.blob = new Blob([bin], { type: 'application/octet-stream' });
+            }
+            await db.messages.add(rec);
+          }
+        }
+        for (const m of payload.meta) await db.meta.put(m);
+      });
+
+      UI.toast('Import berhasil', 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch (err) {
+      console.error(err);
+      UI.toast('File tidak valid atau PIN salah', 'error');
+    } finally {
+      e.target.value = '';
+    }
+  });
+
+  $('#btnWipe').addEventListener('click', async () => {
+    const ok = await UI.confirmDialog('HAPUS SEMUA DATA? Tidak bisa dibatalkan.');
+    if (!ok) return;
+    await db.delete();
+    localStorage.clear();
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    UI.toast('Data dihapus', 'success');
+    setTimeout(() => location.reload(), 1000);
+  });
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  const hasPin = await hasPIN();
+  showLockScreen(hasPin ? 'unlock' : 'setup');
+
+  $('#unlockBtn').addEventListener('click', async () => {
+    const pin = $('#pinInput').value.trim();
+    if (pin.length < 6) { UI.toast('PIN minimal 6 digit', 'warn'); return; }
+    const isSetup = !(await hasPIN());
+    if (isSetup) {
+      const pin2 = await UI.promptDialog('Konfirmasi PIN:', { type: 'password', minLen: 6, placeholder: '••••••' });
+      if (!pin2) return;
+      if (pin !== pin2) { UI.toast('PIN tidak cocok', 'error'); return; }
+      try { cryptoKey = await setupPIN(pin); UI.toast('PIN dibuat!', 'success'); showMainApp(); }
+      catch (e) { console.error(e); UI.toast('Gagal buat PIN', 'error'); }
+    } else {
+      try {
+        const key = await verifyPIN(pin);
+        if (!key) { UI.toast('PIN salah', 'error'); $('#pinInput').value = ''; return; }
+        cryptoKey = key;
+        showMainApp();
+      } catch (e) { console.error(e); UI.toast('Gagal buka', 'error'); }
+    }
+  });
+
+  $('#pinInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('#unlockBtn').click();
+  });
+
+  ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
+    document.addEventListener(evt, () => { if (cryptoKey) scheduleAutoLock(); }, { passive: true });
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && cryptoKey) {
+      setTimeout(() => { if (document.hidden && cryptoKey) { cryptoKey = null; showLockScreen('unlock'); } }, HIDDEN_GRACE_MS);
+    }
+  });
+});
+</script>
+</body>
+</html>
