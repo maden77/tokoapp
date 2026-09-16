@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v3.1';
 const STATIC_CACHE  = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
@@ -20,6 +20,9 @@ const STATIC_ASSETS = [
   './apps/kalkulator.js',
   './apps/pengaturan.js',
   './apps/pesan.js',
+  './alquran.html',
+  './perpustakaan.html',
+  './uang.html',
   './icon-192.png',
   './icon-512.png'
 ];
