@@ -3,7 +3,7 @@
   "short_name": "TokoApp",
   "description": "Aplikasi lokal-first: Catatan terenkripsi & Kamera",
   "start_url": "./index.html",
-  "scope": "/",
+  "scope": "./",
   "display": "standalone",
   "display_override": ["standalone"],
   "background_color": "#0f172a",
