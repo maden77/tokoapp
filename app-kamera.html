@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#6366f1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; object-src 'none'; frame-ancestors 'none';">
+<link rel="manifest" href="manifest.json">
+<title>📷 Kamera — Toko App</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root { --bg:#0f172a; --text:#fff; --text-dim:#94a3b8; --border:rgba(255,255,255,.1); --primary:#6366f1; --accent:#a855f7; }
+  html, body { font-family:-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:16px 20px; padding-top:calc(16px + env(safe-area-inset-top,0px)); background:rgba(15,23,42,.95); position:sticky; top:0; z-index:10; border-bottom:1px solid var(--border); }
+  .back { background:rgba(255,255,255,.1); border:none; color:#fff; width:38px; height:38px; border-radius:10px; font-size:18px; cursor:pointer; }
+  .topbar h1 { font-size:18px; }
+  .container { padding:20px; }
+  .video-wrap { position:relative; width:100%; background:#000; border-radius:16px; overflow:hidden; aspect-ratio:3/4; }
+  video, canvas { width:100%; height:100%; object-fit:cover; display:block; }
+  .cam-btn { margin-top:16px; width:100%; padding:16px; background:linear-gradient(90deg,var(--primary),var(--accent)); border:none; border-radius:14px; color:#fff; font-size:16px; font-weight:600; cursor:pointer; }
+  .cam-btn:disabled { opacity:.5; }
+  .gallery-title { margin-top:24px; font-size:14px; color:var(--text-dim); margin-bottom:12px; }
+  .gallery { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .gallery img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:10px; cursor:pointer; }
+  .empty { text-align:center; color:#64748b; padding:40px 0; font-size:14px; grid-column:1/-1; }
+  .lock-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:9999; padding:20px; }
+  .lock-screen.hidden { display:none !important; }
+  .lock-box { width:100%; max-width:320px; text-align:center; }
+  .lock-box h2 { font-size:22px; margin-bottom:8px; }
+  .lock-box p { color:var(--text-dim); font-size:13px; margin-bottom:20px; }
+  .pin-input { width:100%; padding:16px; background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:12px; color:#fff; font-size:24px; letter-spacing:8px; text-align:center; outline:none; font-family:inherit; }
+  .lock-btn { margin-top:16px; width:100%; padding:14px; background:linear-gradient(90deg,var(--primary),var(--accent)); border:none; border-radius:12px; color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
+  .main-app { display:none; }
+  .main-app.visible { display:block; }
+</style>
+</head>
+<body>
+
+<div id="lockScreen" class="lock-screen">
+  <div class="lock-box">
+    <h2 id="lockTitle">🔐 Buat PIN</h2>
+    <p id="lockMsg">PIN baru (min 6 digit) untuk mengenkripsi</p>
+    <input id="pinInput" class="pin-input" type="password" inputmode="numeric" maxlength="12" placeholder="PIN baru">
+    <button class="lock-btn" id="unlockBtn">Buat PIN</button>
+  </div>
+</div>
+
+<div id="main" class="main-app">
+  <div class="topbar">
+    <button class="back" onclick="location.href='index.html'">←</button>
+    <h1>📷 Kamera</h1>
+  </div>
+  <div class="container">
+    <div class="video-wrap">
+      <video id="video" autoplay playsinline muted></video>
+    </div>
+    <button class="cam-btn" id="btnCapture" disabled>⏳ Menyiapkan kamera...</button>
+    <div class="gallery-title">Galeri Foto (terenkripsi)</div>
+    <div class="gallery" id="gallery"></div>
+  </div>
+</div>
+
+<script src="shared/dexie.min.js"></script>
+<script src="shared/ui.js"></script>
+<script src="shared/crypto.js"></script>
+
+<script>
+'use strict';
+
+const db = new Dexie('toko_app_db');
+db.version(2).stores({
+  notes:    '++id, date',
+  photos:   '++id, date',
+  meta:     'key',
+  messages: '++id, date, type'
+});
+
+let cryptoKey = null;
+let lockTimer = null;
+let currentStream = null;
+const IDLE_MS = 3 * 60 * 1000;
+const HIDDEN_GRACE_MS = 30 * 1000;
+const $ = (s) => document.querySelector(s);
+
+async function hasPIN() { return !!(await db.meta.get('pin')); }
+async function setupPIN(pin) {
+  const salt = await CRYPTO.createSalt();
+  const key = await CRYPTO.deriveKey(pin, salt);
+  const verifier = await CRYPTO.makeVerifier(key);
+  await db.meta.put({ key: 'pin', salt: CRYPTO.bufToB64(salt), verifier });
+  return key;
+}
+async function verifyPIN(pin) {
+  const rec = await db.meta.get('pin');
+  if (!rec) return null;
+  const salt = new Uint8Array(CRYPTO.b64ToBuf(rec.salt));
+  const key = await CRYPTO.deriveKey(pin, salt);
+  return (await CRYPTO.checkVerifier(key, rec.verifier)) ? key : null;
+}
+
+function stopCamera() {
+  if (currentStream) {
+    currentStream.getTracks().forEach(t => t.stop());
+    currentStream = null;
+  }
+}
+
+function showMainApp() {
+  $('#lockScreen').classList.add('hidden');
+  $('#main').classList.add('visible');
+  scheduleAutoLock();
+  initApp();
+}
+function showLockScreen(mode) {
+  $('#lockScreen').classList.remove('hidden');
+  $('#main').classList.remove('visible');
+  const title = $('#lockTitle'), msg = $('#lockMsg'), input = $('#pinInput'), btn = $('#unlockBtn');
+  if (mode === 'setup') {
+    title.textContent = '🔐 Buat PIN';
+    msg.textContent = 'PIN baru (min 6 digit) untuk mengenkripsi';
+    input.placeholder = 'PIN baru';
+    btn.textContent = 'Buat PIN';
+  } else {
+    title.textContent = '🔒 Terkunci';
+    msg.textContent = 'Masukkan PIN untuk membuka';
+    input.placeholder = '••••';
+    btn.textContent = 'Buka';
+  }
+  input.value = '';
+  setTimeout(() => input.focus(), 100);
+}
+function scheduleAutoLock() {
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(() => { cryptoKey = null; stopCamera(); showLockScreen('unlock'); }, IDLE_MS);
+}
+
+function compressImage(blob, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      c.getContext('2d').drawImage(img, 0, 0, width, height);
+      c.toBlob(b => b ? resolve(b) : reject(new Error('compress fail')), 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+let appInit = false;
+async function initApp() {
+  if (appInit) return;
+  appInit = true;
+
+  const video = $('#video');
+  const gallery = $('#gallery');
+  const btnCapture = $('#btnCapture');
+  const canvas = document.createElement('canvas');
+
+  async function startCamera() {
+    stopCamera();
+    try {
+      currentStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1920 } },
+        audio: false
+      });
+      video.srcObject = currentStream;
+      btnCapture.disabled = false;
+      btnCapture.textContent = '📸 Ambil Foto';
+    } catch (err) {
+      console.error(err);
+      btnCapture.textContent = '❌ Kamera tidak tersedia';
+      UI.toast('Kamera tidak bisa diakses', 'error');
+    }
+  }
+
+  async function renderGallery() {
+    if (gallery._urls) gallery._urls.forEach(u => URL.revokeObjectURL(u));
+    const photos = await db.photos.orderBy('date').reverse().limit(50).toArray();
+    if (!photos.length) {
+      gallery.innerHTML = '<div class="empty">Belum ada foto</div>';
+      gallery._urls = [];
+      return;
+    }
+    const urls = [];
+    const items = await Promise.all(photos.map(async p => {
+      try {
+        const blob = await CRYPTO.decryptBlob(cryptoKey, p.blob);
+        const url = URL.createObjectURL(blob);
+        urls.push(url);
+        return `<img src="${url}" data-id="${p.id}" alt="Foto">`;
+      } catch { return ''; }
+    }));
+    gallery.innerHTML = items.join('');
+    gallery._urls = urls;
+    gallery.querySelectorAll('img').forEach(img => {
+      img.addEventListener('click', async () => {
+        const ok = await UI.confirmDialog('Hapus foto ini?');
+        if (!ok) return;
+        await db.photos.delete(Number(img.dataset.id));
+        UI.toast('Foto dihapus', 'success');
+        renderGallery();
+      });
+    });
+  }
+
+  btnCapture.addEventListener('click', async () => {
+    if (!video.videoWidth) return;
+    btnCapture.disabled = true;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    canvas.toBlob(async (rawBlob) => {
+      try {
+        const compressed = await compressImage(rawBlob, 1600, 0.75);
+        const encBlob = await CRYPTO.encryptBlob(cryptoKey, compressed);
+        await db.photos.add({ blob: encBlob, date: new Date().toISOString(), size: encBlob.size });
+        UI.toast('Foto tersimpan', 'success');
+        renderGallery();
+      } catch (e) {
+        console.error(e);
+        UI.toast('Gagal simpan foto', 'error');
+      } finally {
+        btnCapture.disabled = false;
+      }
+    }, 'image/jpeg', 0.85);
+
+    const flash = document.createElement('div');
+    flash.style.cssText = 'position:absolute;inset:0;background:#fff;opacity:.8;transition:opacity .3s;pointer-events:none;';
+    $('.video-wrap').appendChild(flash);
+    setTimeout(() => flash.style.opacity = '0', 30);
+    setTimeout(() => flash.remove(), 400);
+  });
+
+  startCamera();
+  renderGallery();
+
+  window.addEventListener('beforeunload', stopCamera);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopCamera();
+    else if (!document.hidden && cryptoKey) startCamera();
+  });
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  const hasPin = await hasPIN();
+  showLockScreen(hasPin ? 'unlock' : 'setup');
+
+  $('#unlockBtn').addEventListener('click', async () => {
+    const pin = $('#pinInput').value.trim();
+    if (pin.length < 6) { UI.toast('PIN minimal 6 digit', 'warn'); return; }
+    const isSetup = !(await hasPIN());
+    if (isSetup) {
+      const pin2 = await UI.promptDialog('Konfirmasi PIN:', { type: 'password', minLen: 6, placeholder: '••••••' });
+      if (!pin2) return;
+      if (pin !== pin2) { UI.toast('PIN tidak cocok', 'error'); return; }
+      try { cryptoKey = await setupPIN(pin); UI.toast('PIN dibuat!', 'success'); showMainApp(); }
+      catch (e) { console.error(e); UI.toast('Gagal buat PIN', 'error'); }
+    } else {
+      try {
+        const key = await verifyPIN(pin);
+        if (!key) { UI.toast('PIN salah', 'error'); $('#pinInput').value = ''; return; }
+        cryptoKey = key;
+        showMainApp();
+      } catch (e) { console.error(e); UI.toast('Gagal buka', 'error'); }
+    }
+  });
+
+  $('#pinInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('#unlockBtn').click();
+  });
+
+  ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
+    document.addEventListener(evt, () => { if (cryptoKey) scheduleAutoLock(); }, { passive: true });
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && cryptoKey) {
+      setTimeout(() => { if (document.hidden && cryptoKey) { cryptoKey = null; stopCamera(); showLockScreen('unlock'); } }, HIDDEN_GRACE_MS);
+    }
+  });
+});
+</script>
+</body>
+</html>
