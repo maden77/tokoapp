@@ -135,3 +135,10 @@ const Router = (() => {
 })();
 
 window.Router = Router;
+
+// Auto init
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => Router.init());
+} else {
+  Router.init();
+}
