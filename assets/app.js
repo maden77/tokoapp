@@ -242,7 +242,6 @@ async function loadKamera() {
   }
 
   async function renderGallery() {
-    // Revoke URL lama
     if (gallery._objectUrls) {
       gallery._objectUrls.forEach(u => URL.revokeObjectURL(u));
     }
@@ -307,7 +306,6 @@ async function loadKamera() {
       }
     }, 'image/jpeg', 0.85);
 
-    // Shutter flash
     const wrap = $('.video-wrap');
     const flash = document.createElement('div');
     flash.style.cssText = 'position:absolute;inset:0;background:#fff;opacity:.8;transition:opacity .3s;pointer-events:none;';
@@ -324,6 +322,275 @@ async function loadKamera() {
     if (document.hidden) stopCamera();
     else if (State.app === 'kamera' && State.cryptoKey) startCamera();
   });
+}
+
+// ============================================================
+//   KALKULATOR
+// ============================================================
+async function loadKalkulator() {
+  setTitle('🧮 Kalkulator');
+  setContent(`
+    <div class="calc-container">
+      <div class="calc-display">
+        <div class="calc-expression" id="calcExpr">0</div>
+        <div class="calc-result" id="calcResult">0</div>
+      </div>
+
+      <div class="calc-buttons">
+        <button class="calc-btn danger" data-action="clear">C</button>
+        <button class="calc-btn op" data-action="backspace">⌫</button>
+        <button class="calc-btn op" data-action="open">(</button>
+        <button class="calc-btn op" data-val="÷">÷</button>
+
+        <button class="calc-btn" data-val="7">7</button>
+        <button class="calc-btn" data-val="8">8</button>
+        <button class="calc-btn" data-val="9">9</button>
+        <button class="calc-btn op" data-val="×">×</button>
+
+        <button class="calc-btn" data-val="4">4</button>
+        <button class="calc-btn" data-val="5">5</button>
+        <button class="calc-btn" data-val="6">6</button>
+        <button class="calc-btn op" data-val="-">−</button>
+
+        <button class="calc-btn" data-val="1">1</button>
+        <button class="calc-btn" data-val="2">2</button>
+        <button class="calc-btn" data-val="3">3</button>
+        <button class="calc-btn op" data-val="+">+</button>
+
+        <button class="calc-btn" data-action="close">)</button>
+        <button class="calc-btn" data-val="0">0</button>
+        <button class="calc-btn" data-val=".">.</button>
+        <button class="calc-btn eq" data-action="equals">=</button>
+      </div>
+
+      <div class="calc-history">
+        <div class="calc-history-header">
+          <h3>📜 Riwayat</h3>
+          <div>
+            <button class="btn-clear-history" id="btnClearHistory">🗑️</button>
+            <button class="btn-download" id="btnDownload">⬇️ Download</button>
+          </div>
+        </div>
+        <div id="historyList"></div>
+      </div>
+    </div>
+  `);
+
+  const exprEl = document.getElementById('calcExpr');
+  const resultEl = document.getElementById('calcResult');
+  const historyList = document.getElementById('historyList');
+
+  let currentExpr = '';
+
+  function updateDisplay() {
+    exprEl.textContent = currentExpr || '0';
+  }
+
+  function updatePreview() {
+    if (!currentExpr) {
+      resultEl.textContent = '0';
+      return;
+    }
+    try {
+      const res = Calculator.calculate(currentExpr);
+      resultEl.textContent = res.resultFormatted;
+    } catch {
+      // Abaikan error saat live preview
+    }
+  }
+
+  async function renderHistory() {
+    const history = await db.meta.get('calc_history');
+    const items = history ? history.value : [];
+
+    if (!items.length) {
+      historyList.innerHTML = '<div class="empty">Belum ada riwayat</div>';
+      return;
+    }
+
+    historyList.innerHTML = items.slice(0, 20).map((item, idx) => `
+      <div class="history-item">
+        <button class="history-delete" data-idx="${idx}">✕</button>
+        ${escapeHtml(item.text)}
+        <span class="history-item-result">= ${escapeHtml(item.result)}</span>
+      </div>
+    `).join('');
+
+    historyList.querySelectorAll('.history-delete').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.idx);
+        const history = await db.meta.get('calc_history');
+        const items = history ? history.value : [];
+        items.splice(idx, 1);
+        await db.meta.put({ key: 'calc_history', value: items });
+        renderHistory();
+      });
+    });
+  }
+
+  async function saveHistory(calcResult) {
+    const historyRec = await db.meta.get('calc_history');
+    const items = historyRec ? historyRec.value : [];
+
+    const textLines = [
+      `${calcResult.expression} = ${calcResult.resultFormatted}`,
+      ...calcResult.breakdown
+    ].join('\n');
+
+    items.unshift({
+      text: textLines,
+      expression: calcResult.expression,
+      result: calcResult.resultFormatted,
+      breakdown: calcResult.breakdown,
+      date: new Date().toISOString()
+    });
+
+    if (items.length > 100) items.length = 100;
+
+    await db.meta.put({ key: 'calc_history', value: items });
+    renderHistory();
+  }
+
+  document.querySelectorAll('.calc-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.action;
+      const val = btn.dataset.val;
+
+      if (action === 'clear') {
+        currentExpr = '';
+        resultEl.textContent = '0';
+        updateDisplay();
+        return;
+      }
+
+      if (action === 'backspace') {
+        currentExpr = currentExpr.slice(0, -1);
+        updateDisplay();
+        updatePreview();
+        return;
+      }
+
+      if (action === 'equals') {
+        if (!currentExpr) return;
+        try {
+          const res = Calculator.calculate(currentExpr);
+          resultEl.textContent = res.resultFormatted;
+          await saveHistory(res);
+          currentExpr = res.resultFormatted.replace(/\./g, '');
+          updateDisplay();
+        } catch (err) {
+          UI.toast(err.message, 'error');
+          resultEl.textContent = 'Error';
+        }
+        return;
+      }
+
+      if (action === 'open') {
+        currentExpr += '(';
+        updateDisplay();
+        updatePreview();
+        return;
+      }
+
+      if (action === 'close') {
+        currentExpr += ')';
+        updateDisplay();
+        updatePreview();
+        return;
+      }
+
+      if (val) {
+        currentExpr += val;
+        updateDisplay();
+        updatePreview();
+      }
+    });
+  });
+
+  document.getElementById('btnDownload').addEventListener('click', async () => {
+    const historyRec = await db.meta.get('calc_history');
+    const items = historyRec ? historyRec.value : [];
+
+    if (!items.length) {
+      UI.toast('Belum ada riwayat untuk di-download', 'warn');
+      return;
+    }
+
+    const header = [
+      '========================================',
+      '  RIWAYAT KALKULATOR - TOKO APP',
+      `  Diekspor: ${new Date().toLocaleString('id-ID')}`,
+      `  Total: ${items.length} perhitungan`,
+      '========================================',
+      ''
+    ].join('\n');
+
+    const body = items.map((item, idx) => {
+      return `[${idx + 1}] ${new Date(item.date).toLocaleString('id-ID')}\n${item.text}\n${'─'.repeat(40)}\n`;
+    }).join('\n');
+
+    const footer = [
+      '',
+      '========================================',
+      'Dibuat dengan Toko App PWA',
+      'Data terenkripsi lokal, tidak ada cloud',
+      '========================================'
+    ].join('\n');
+
+    const content = header + body + footer;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+
+    const date = new Date().toISOString().slice(0, 10);
+    UI.downloadFile(`riwayat-kalkulator-${date}.txt`, blob);
+    UI.toast('File riwayat berhasil di-download', 'success');
+  });
+
+  document.getElementById('btnClearHistory').addEventListener('click', async () => {
+    const ok = await UI.confirmDialog('Hapus SEMUA riwayat kalkulator?');
+    if (!ok) return;
+    await db.meta.put({ key: 'calc_history', value: [] });
+    UI.toast('Riwayat dihapus', 'success');
+    renderHistory();
+  });
+
+  // Keyboard support
+  const keyHandler = (e) => {
+    if (/^[0-9]$/.test(e.key)) {
+      currentExpr += e.key;
+    } else if (e.key === '+' || e.key === '-') {
+      currentExpr += e.key;
+    } else if (e.key === '*') {
+      currentExpr += '×';
+    } else if (e.key === '/') {
+      currentExpr += '÷';
+    } else if (e.key === '.') {
+      currentExpr += '.';
+    } else if (e.key === '(' || e.key === ')') {
+      currentExpr += e.key;
+    } else if (e.key === 'Enter' || e.key === '=') {
+      document.querySelector('.calc-btn[data-action="equals"]').click();
+      return;
+    } else if (e.key === 'Backspace') {
+      currentExpr = currentExpr.slice(0, -1);
+    } else if (e.key === 'Escape') {
+      currentExpr = '';
+      resultEl.textContent = '0';
+      updateDisplay();
+      return;
+    } else {
+      return;
+    }
+    updateDisplay();
+    updatePreview();
+  };
+
+  document.addEventListener('keydown', keyHandler);
+  window.addEventListener('beforeunload', () => {
+    document.removeEventListener('keydown', keyHandler);
+  });
+
+  updateDisplay();
+  renderHistory();
 }
 
 // ============================================================
@@ -358,7 +625,6 @@ async function loadPengaturan() {
 
   $('#btnLockNow').addEventListener('click', () => lockApp());
 
-  // ---- Ganti PIN ----
   $('#btnChangePIN').addEventListener('click', async () => {
     const oldPin = await UI.promptDialog('Masukkan PIN lama:', {
       type: 'password', minLen: 6, placeholder: '••••••'
@@ -381,14 +647,12 @@ async function loadPengaturan() {
     try {
       const newKey = await setupPIN(newPin);
 
-      // Re-enkripsi notes
       const notes = await db.notes.toArray();
       for (const n of notes) {
         const text = await CRYPTO.decrypt(oldKey, n.cipher);
         n.cipher = await CRYPTO.encrypt(newKey, text);
         await db.notes.put(n);
       }
-      // Re-enkripsi photos
       const photos = await db.photos.toArray();
       for (const p of photos) {
         const blob = await CRYPTO.decryptBlob(oldKey, p.blob);
@@ -403,7 +667,6 @@ async function loadPengaturan() {
     }
   });
 
-  // ---- Backup ----
   $('#btnBackup').addEventListener('click', async () => {
     try {
       const notes = await db.notes.toArray();
@@ -430,7 +693,6 @@ async function loadPengaturan() {
     }
   });
 
-  // ---- Restore ----
   $('#fileImport').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -465,16 +727,12 @@ async function loadPengaturan() {
     }
   });
 
-  // ---- Wipe ----
   $('#btnWipe').addEventListener('click', async () => {
     const ok = await UI.confirmDialog('HAPUS SEMUA DATA? Tindakan ini tidak bisa dibatalkan.');
     if (!ok) return;
 
-    // Wipe IndexedDB
     await db.delete();
-    // Wipe localStorage
     localStorage.clear();
-    // Wipe caches
     if ('caches' in window) {
       const keys = await caches.keys();
       await Promise.all(keys.map(k => caches.delete(k)));
@@ -532,17 +790,16 @@ function bindUnlockHandler() {
 function route(app) {
   if (app === 'kamera') loadKamera();
   else if (app === 'pengaturan') loadPengaturan();
+  else if (app === 'kalkulator') loadKalkulator();
   else loadCatatan();
 }
 
 async function init() {
-  // Anti clickjacking
   if (window.top !== window.self) {
     document.documentElement.innerHTML = 'Akses ditolak.';
     throw new Error('Framed');
   }
 
-  // Tombol kembali
   const btnBack = document.getElementById('btnBack');
   if (btnBack) {
     btnBack.addEventListener('click', () => {
