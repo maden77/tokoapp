@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#6366f1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' https://cdn.jsdelivr.net; object-src 'none'; frame-ancestors 'none';">
+<link rel="manifest" href="manifest.json">
+<title>💱 Konverter Uang — Toko App</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root { --bg:#0f172a; --text:#fff; --text-dim:#94a3b8; --border:rgba(255,255,255,.1); --primary:#6366f1; --accent:#a855f7; }
+  html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:linear-gradient(135deg,var(--bg),#1e293b); color:var(--text); min-height:100vh; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:16px 20px; padding-top:calc(16px + env(safe-area-inset-top,0px)); background:rgba(15,23,42,.95); position:sticky; top:0; z-index:10; border-bottom:1px solid var(--border); }
+  .back { background:rgba(255,255,255,.1); border:none; color:#fff; width:38px; height:38px; border-radius:10px; font-size:18px; cursor:pointer; }
+  .topbar h1 { font-size:18px; }
+  .container { padding:20px; }
+  .converter { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:20px; }
+  .field { margin-bottom:16px; }
+  .field label { display:block; font-size:13px; color:var(--text-dim); margin-bottom:8px; }
+  .input-row { display:flex; gap:10px; }
+  .amount-input { flex:1; padding:14px 16px; background:rgba(255,255,255,.08); border:1px solid var(--border); border-radius:12px; color:#fff; font-size:18px; font-weight:600; outline:none; font-family:inherit; }
+  .amount-input:focus { border-color:var(--primary); }
+  .currency-select { padding:14px 12px; background:rgba(255,255,255,.08); border:1px solid var(--border); border-radius:12px; color:#fff; font-size:15px; font-weight:600; outline:none; cursor:pointer; font-family:inherit; }
+  .currency-select:focus { border-color:var(--primary); }
+  .swap-row { display:flex; justify-content:center; margin:-6px 0 10px; }
+  .swap-btn { width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#6366f1,#a855f7); border:none; color:#fff; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .swap-btn:active { transform:scale(.92); }
+  .result-box { background:linear-gradient(135deg,rgba(99,102,241,.15),rgba(168,85,247,.15)); border:1px solid rgba(99,102,241,.3); border-radius:14px; padding:20px; text-align:center; margin-top:20px; }
+  .result-label { font-size:13px; color:var(--text-dim); margin-bottom:8px; }
+  .result-value { font-size:32px; font-weight:700; word-break:break-all; line-height:1.2; }
+  .result-rate { font-size:13px; color:#a5b4fc; margin-top:10px; }
+  .result-time { font-size:11px; color:#64748b; margin-top:6px; }
+  .loading { text-align:center; color:var(--text-dim); padding:20px; font-size:14px; }
+  .error { text-align:center; color:#f87171; padding:20px; font-size:14px; }
+  .popular { margin-top:24px; }
+  .popular h3 { font-size:14px; color:var(--text-dim); margin-bottom:12px; text-transform:uppercase; letter-spacing:1px; }
+  .popular-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .popular-item { padding:12px 14px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-size:14px; }
+  .popular-item:active { background:rgba(255,255,255,.1); }
+  .popular-item .from { color:var(--text-dim); }
+  .popular-item .arrow { color:#a5b4fc; }
+  .popular-item .to { font-weight:600; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="back" onclick="location.href='index.html'">←</button>
+  <h1>💱 Konverter Uang</h1>
+</div>
+
+<div class="container">
+  <div class="converter">
+    <div class="field">
+      <label>Jumlah</label>
+      <div class="input-row">
+        <input class="amount-input" id="amountInput" type="number" inputmode="decimal" value="1" placeholder="0">
+        <select class="currency-select" id="fromCurrency"></select>
+      </div>
+    </div>
+
+    <div class="swap-row">
+      <button class="swap-btn" id="btnSwap" title="Tukar">⇅</button>
+    </div>
+
+    <div class="field">
+      <label>Ke</label>
+      <select class="currency-select" id="toCurrency" style="width:100%;"></select>
+    </div>
+
+    <div class="result-box" id="resultBox">
+      <div class="loading">Memuat kurs...</div>
+    </div>
+  </div>
+
+  <div class="popular">
+    <h3>Kurs Populer</h3>
+    <div class="popular-grid" id="popularGrid">
+      <div class="loading" style="grid-column:1/-1;">Memuat...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const API_BASE = 'https://cdn.jsdelivr.net/gh/NemesisX1/currency-api@main/v1/currencies';
+const $ = (s) => document.querySelector(s);
+
+const CURRENCY_NAMES = {
+  IDR: '🇮🇩 IDR - Rupiah Indonesia',
+  USD: '🇺🇸 USD - Dolar Amerika',
+  EUR: '🇪🇺 EUR - Euro',
+  GBP: '🇬🇧 GBP - Pound Inggris',
+  JPY: '🇯🇵 JPY - Yen Jepang',
+  SGD: '🇸🇬 SGD - Dolar Singapura',
+  MYR: '🇲🇾 MYR - Ringgit Malaysia',
+  CNY: '🇨🇳 CNY - Yuan China',
+  KRW: '🇰🇷 KRW - Won Korea',
+  AUD: '🇦🇺 AUD - Dolar Australia',
+  SAR: '🇸🇦 SAR - Riyal Saudi',
+  AED: '🇦🇪 AED - Dirham UAE',
+  INR: '🇮🇳 INR - Rupee India',
+  THB: '🇹🇭 THB - Baht Thailand',
+  PHP: '🇵🇭 PHP - Peso Filipina',
+  VND: '🇻🇳 VND - Dong Vietnam',
+  HKD: '🇭🇰 HKD - Dolar Hong Kong',
+  CHF: '🇨🇭 CHF - Franc Swiss',
+  CAD: '🇨🇦 CAD - Dolar Kanada',
+  NZD: '🇳🇿 NZD - Dolar Selandia Baru',
+  TRY: '🇹🇷 TRY - Lira Turki',
+  RUB: '🇷🇺 RUB - Rubel Rusia',
+  BRL: '🇧🇷 BRL - Real Brasil',
+  MXN: '🇲🇽 MXN - Peso Meksiko',
+  ZAR: '🇿🇦 ZAR - Rand Afrika Selatan',
+  EGP: '🇪🇬 EGP - Pound Mesir',
+  PKR: '🇵🇰 PKR - Rupee Pakistan',
+  BDT: '🇧🇩 BDT - Taka Bangladesh',
+  NGN: '🇳🇬 NGN - Naira Nigeria',
+  KES: '🇰🇪 KES - Shilling Kenya',
+  BTC: '₿ BTC - Bitcoin',
+  ETH: 'Ξ ETH - Ethereum'
+};
+
+let ratesCache = {};
+
+async function loadRates(base = 'IDR') {
+  if (ratesCache[base]) return ratesCache[base];
+  const res = await fetch(API_BASE + '/' + base.toLowerCase() + '.json');
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  ratesCache[base] = data;
+  return data;
+}
+
+function populateCurrencySelects() {
+  const codes = Object.keys(CURRENCY_NAMES);
+  const opts = codes.map(c => `<option value="${c}">${CURRENCY_NAMES[c]}</option>`).join('');
+
+  const fromSel = $('#fromCurrency');
+  const toSel = $('#toCurrency');
+  fromSel.innerHTML = opts;
+  toSel.innerHTML = opts;
+  fromSel.value = 'IDR';
+  toSel.value = 'USD';
+}
+
+function formatCurrency(num, code) {
+  try {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: code,
+      maximumFractionDigits: code === 'IDR' || code === 'VND' || code === 'JPY' || code === 'KRW' ? 0 : 2
+    }).format(num);
+  } catch {
+    return num.toLocaleString('id-ID', { maximumFractionDigits: 4 }) + ' ' + code;
+  }
+}
+
+async function convert() {
+  const amount = parseFloat($('#amountInput').value) || 0;
+  const from = $('#fromCurrency').value;
+  const to = $('#toCurrency').value;
+
+  if (from === to) {
+    $('#resultBox').innerHTML = `
+      <div class="result-label">Hasil</div>
+      <div class="result-value">${formatCurrency(amount, to)}</div>
+      <div class="result-rate">1 ${from} = 1 ${to}</div>
+    `;
+    return;
+  }
+
+  $('#resultBox').innerHTML = '<div class="loading">Menghitung...</div>';
+
+  try {
+    const data = await loadRates(from);
+    const baseData = data[from.toLowerCase()];
+    const rate = baseData[to.toLowerCase()];
+    if (!rate) throw new Error('Kurs tidak tersedia');
+
+    const result = amount * rate;
+    const formatted = formatCurrency(result, to);
+    const rateStr = rate < 0.01 ? rate.toFixed(8) : (rate < 1 ? rate.toFixed(4) : rate.toFixed(2));
+
+    $('#resultBox').innerHTML = `
+      <div class="result-label">${formatCurrency(amount, from)} =</div>
+      <div class="result-value">${formatted}</div>
+      <div class="result-rate">1 ${from} = ${rateStr} ${to}</div>
+      <div class="result-time">Update: ${data.date || 'baru'}</div>
+    `;
+  } catch (err) {
+    console.error(err);
+    $('#resultBox').innerHTML = '<div class="error">Gagal memuat kurs. Coba lagi.</div>';
+  }
+}
+
+async function renderPopular() {
+  const pairs = [
+    ['USD', 'IDR'], ['IDR', 'USD'], ['EUR', 'IDR'], ['IDR', 'EUR'],
+    ['GBP', 'IDR'], ['IDR', 'GBP'], ['SGD', 'IDR'], ['IDR', 'SGD'],
+    ['MYR', 'IDR'], ['IDR', 'MYR'], ['SAR', 'IDR'], ['IDR', 'SAR']
+  ];
+
+  try {
+    const data = await loadRates('IDR');
+    const baseData = data['idr'];
+    $('#popularGrid').innerHTML = pairs.map(([from, to]) => {
+      let rate;
+      if (from === 'IDR') {
+        rate = baseData[to.toLowerCase()];
+      } else {
+        rate = (1 / baseData[from.toLowerCase()]) * baseData[to.toLowerCase()];
+      }
+      if (!rate) return '';
+      const rateStr = rate < 0.01 ? rate.toFixed(6) : (rate < 1 ? rate.toFixed(4) : rate.toFixed(2));
+      return `
+        <div class="popular-item" data-from="${from}" data-to="${to}">
+          <span class="from">${from}</span>
+          <span class="arrow">→</span>
+          <span class="to">${rateStr} ${to}</span>
+        </div>
+      `;
+    }).join('');
+
+    document.querySelectorAll('.popular-item').forEach(item => {
+      item.addEventListener('click', () => {
+        $('#fromCurrency').value = item.dataset.from;
+        $('#toCurrency').value = item.dataset.to;
+        $('#amountInput').value = '1';
+        convert();
+        window.scrollTo(0, 0);
+      });
+    });
+  } catch (err) {
+    $('#popularGrid').innerHTML = '<div class="error" style="grid-column:1/-1;">Gagal memuat kurs populer.</div>';
+  }
+}
+
+// ---------- Events ----------
+$('#amountInput').addEventListener('input', convert);
+$('#fromCurrency').addEventListener('change', convert);
+$('#toCurrency').addEventListener('change', convert);
+
+$('#btnSwap').addEventListener('click', () => {
+  const from = $('#fromCurrency').value;
+  const to = $('#toCurrency').value;
+  $('#fromCurrency').value = to;
+  $('#toCurrency').value = from;
+  convert();
+});
+
+// ---------- Init ----------
+populateCurrencySelects();
+convert();
+renderPopular();
+</script>
+</body>
+</html>
