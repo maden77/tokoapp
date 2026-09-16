@@ -58,7 +58,7 @@ jobs:
             "build-tools;34.0.0" > /dev/null
           echo "✅ SDK packages installed"
 
-      - name: 🎯 Install Gradle 8.7 (Absolute Path)
+      - name: 🎯 Install Gradle 8.7
         run: |
           set -e
           cd /tmp
@@ -178,16 +178,26 @@ jobs:
           cordova platform add android@${{ env.CORDOVA_ANDROID_VERSION }}
           echo "✅ Android platform added"
 
-      - name: 📝 Setup Signing Config
+      - name: 📝 Setup Signing Config + Copy Keystore
         run: |
+          # Copy keystore ke SEMUA lokasi yang mungkin
           cp android.keystore /tmp/tokoapp/android.keystore
+          cp android.keystore /tmp/tokoapp/platforms/android/android.keystore
+          cp android.keystore /tmp/tokoapp/platforms/android/app/android.keystore
+          
+          echo "✅ Keystore copied to 3 locations:"
+          ls -lh /tmp/tokoapp/android.keystore
+          ls -lh /tmp/tokoapp/platforms/android/android.keystore
+          ls -lh /tmp/tokoapp/platforms/android/app/android.keystore
+          
           cd /tmp/tokoapp
           
+          # Tulis build-extras.gradle — pakai absolute path agar pasti ketemu
           cat > build-extras.gradle << 'GRADLEEOF'
           android {
               signingConfigs {
                   release {
-                      storeFile file("../android.keystore")
+                      storeFile file("/tmp/tokoapp/platforms/android/android.keystore")
                       storePassword System.getenv("KEYSTORE_PASSWORD")
                       keyAlias System.getenv("KEY_ALIAS")
                       keyPassword System.getenv("KEY_PASSWORD")
@@ -211,13 +221,13 @@ jobs:
           cdvMinSdkVersion=24
           PROPEOF
           echo "✅ Signing config ready"
+          cat platforms/android/app/build-extras.gradle
 
-      - name: 📝 Create Gradle Wrapper (MANUAL — Tanpa Command)
+      - name: 📝 Create Gradle Wrapper (Manual)
         run: |
           cd /tmp/tokoapp/platforms/android
           mkdir -p gradle/wrapper
           
-          # Tulis langsung file gradle-wrapper.properties
           cat > gradle/wrapper/gradle-wrapper.properties << 'WRAPPEREOF'
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
@@ -228,32 +238,13 @@ jobs:
           zipStorePath=wrapper/dists
           WRAPPEREOF
           
-          echo "✅ gradle-wrapper.properties created:"
-          cat gradle/wrapper/gradle-wrapper.properties
-          
-          # Copy gradle-wrapper.jar dari Gradle 8.7 yang sudah diinstall
-          cp /opt/gradle/lib/plugins/gradle-wrapper-main-8.7.jar gradle/wrapper/gradle-wrapper.jar 2>/dev/null || \
-          find /opt/gradle -name "gradle-wrapper*.jar" -exec cp {} gradle/wrapper/gradle-wrapper.jar \; 2>/dev/null || \
-          echo "⚠️ gradle-wrapper.jar not found, will try alternative"
-          
-          ls -la gradle/wrapper/
-
-      - name: 📝 Create gradlew Script (Manual)
-        run: |
-          cd /tmp/tokoapp/platforms/android
-          
-          # Tulis gradlew manual yang panggil /opt/gradle/bin/gradle
           cat > gradlew << 'GRADLEWEOF'
           #!/bin/sh
           exec /opt/gradle/bin/gradle "$@"
           GRADLEWEOF
           
           chmod +x gradlew
-          
-          echo "✅ gradlew created:"
-          cat gradlew
-          echo ""
-          echo "🔍 Test gradlew:"
+          echo "✅ gradlew created"
           ./gradlew --version
 
       - name: 🔨 Build APK (Pakai gradlew)
@@ -265,8 +256,9 @@ jobs:
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           cd /tmp/tokoapp/platforms/android
           
-          echo "🔍 gradlew version check:"
-          ./gradlew --version
+          echo "🔍 Verifikasi keystore:"
+          ls -lh /tmp/tokoapp/platforms/android/android.keystore
+          ls -lh /tmp/tokoapp/platforms/android/app/android.keystore || true
           
           echo "🔨 Building APK..."
           ./gradlew assembleRelease --stacktrace --no-daemon
@@ -304,4 +296,4 @@ jobs:
       - name: 🧹 Cleanup
         if: always()
         run: |
-          rm -f android.keystore /tmp/tokoapp/android.keystore
+          rm -f android.keystore /tmp/tokoapp/android.keystore /tmp/tokoapp/platforms/android/android.keystore /tmp/tokoapp/platforms/android/app/android.keystore
