@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#6366f1">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Toko App</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: #fff;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  header {
+    padding: 24px 20px;
+    background: rgba(15,23,42,.9);
+    backdrop-filter: blur(10px);
+    position: sticky; top: 0; z-index: 10;
+    border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+  header h1 {
+    font-size: 24px;
+    background: linear-gradient(90deg, #6366f1, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p { color: #94a3b8; font-size: 13px; margin-top: 4px; }
+  .search {
+    margin: 16px 20px;
+    padding: 12px 16px;
+    width: calc(100% - 40px);
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 12px;
+    color: #fff;
+    font-size: 15px;
+    outline: none;
+  }
+  .search::placeholder { color: #64748b; }
+  .section-title {
+    padding: 8px 20px 12px;
+    font-size: 12px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .app-list {
+    padding: 0 20px;
+    display: grid;
+    gap: 12px;
+  }
+  .app-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: transform .15s, background .15s;
+    text-decoration: none;
+    color: #fff;
+  }
+  .app-card:active { transform: scale(.98); background: rgba(255,255,255,.1); }
+  .app-icon {
+    width: 60px; height: 60px;
+    border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px;
+    flex-shrink: 0;
+  }
+  .icon-catatan { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+  .icon-kalkulator { background: linear-gradient(135deg, #8b5cf6, #ec4899); }
+  .icon-pesan { background: linear-gradient(135deg, #10b981, #059669); }
+  .icon-kamera { background: linear-gradient(135deg, #6366f1, #a855f7); }
+  .icon-setting { background: linear-gradient(135deg, #10b981, #059669); }
+  .app-info h3 { font-size: 16px; margin-bottom: 4px; }
+  .app-info p { font-size: 13px; color: #94a3b8; }
+  .app-rating { color: #fbbf24; font-size: 12px; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏪 Toko App</h1>
+  <p>Aplikasi lokal-first, aman & offline</p>
+</header>
+
+<input class="search" type="search" placeholder="🔍 Cari aplikasi..." id="searchInput" autocomplete="off">
+
+<div class="section-title">Semua Aplikasi</div>
+
+<main class="app-list" id="appList">
+
+  <a class="app-card" href="app-catatan.html" data-name="catatan">
+    <div class="app-icon icon-catatan">📝</div>
+    <div class="app-info">
+      <h3>Catatan</h3>
+      <p>Terenkripsi AES-256 • PIN lock</p>
+      <div class="app-rating">⭐ 4.9 • Gratis</div>
+    </div>
+  </a>
+
+  <a class="app-card" href="app-kalkulator.html" data-name="kalkulator">
+    <div class="app-icon icon-kalkulator">🧮</div>
+    <div class="app-info">
+      <h3>Kalkulator</h3>
+      <p>Hitung & simpan riwayat</p>
+      <div class="app-rating">⭐ 4.9 • Gratis</div>
+    </div>
+  </a>
+
+  <a class="app-card" href="pesan.html" data-name="pesan">
+    <div class="app-icon icon-pesan">💬</div>
+    <div class="app-info">
+      <h3>Pesan</h3>
+      <p>Chat, emoji, suara & panggilan</p>
+      <div class="app-rating">⭐ 4.9 • Gratis</div>
+    </div>
+  </a>
+
+  <a class="app-card" href="app-kamera.html" data-name="kamera">
+    <div class="app-icon icon-kamera">📷</div>
+    <div class="app-info">
+      <h3>Kamera</h3>
+      <p>Terenkripsi • Simpan lokal</p>
+      <div class="app-rating">⭐ 4.8 • Gratis</div>
+    </div>
+  </a>
+
+  <a class="app-card" href="app-pengaturan.html" data-name="pengaturan">
+    <div class="app-icon icon-setting">⚙️</div>
+    <div class="app-info">
+      <h3>Pengaturan</h3>
+      <p>Backup, restore & keamanan</p>
+      <div class="app-rating">🔒 Lokal</div>
+    </div>
+  </a>
+
+</main>
+
+<script>
+  // Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  // Search
+  document.getElementById('searchInput').addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.app-card').forEach(card => {
+      card.style.display = card.dataset.name.includes(q) ? 'flex' : 'none';
+    });
+  });
+</script>
+
+</body>
+</html>
