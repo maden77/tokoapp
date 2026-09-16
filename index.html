@@ -52,5 +52,46 @@
   });
   
 </script>
+  <div id="debug-panel" style="position:fixed;top:0;left:0;right:0;background:#000;color:#0f0;padding:12px;font-family:monospace;font-size:12px;z-index:999999;max-height:50vh;overflow:auto;white-space:pre-wrap;"></div>
+<script>
+(function() {
+  const panel = document.getElementById('debug-panel');
+  const log = (m, color) => {
+    panel.innerHTML += '<div style="color:' + (color || '#0f0') + ';">' + m + '</div>';
+  };
+  
+  log('🟢 index.html loaded');
+  
+  window.addEventListener('error', (e) => {
+    log('❌ ' + e.message, '#f00');
+    log('   @ ' + e.filename + ':' + e.lineno, '#f00');
+  });
+  
+  window.addEventListener('unhandledrejection', (e) => {
+    log('❌ PROMISE: ' + (e.reason?.message || e.reason), '#f00');
+  });
+  
+  window.addEventListener('load', () => {
+    log('📦 window.load fired');
+    
+    setTimeout(() => {
+      log('--- Setelah 2 detik ---', '#ff0');
+      log('window.Auth: ' + (window.Auth ? '✅' : '❌'), window.Auth ? '#0f0' : '#f00');
+      log('window.Router: ' + (window.Router ? '✅' : '❌'), window.Router ? '#0f0' : '#f00');
+      log('window.CRYPTO: ' + (window.CRYPTO ? '✅' : '❌'), window.CRYPTO ? '#0f0' : '#f00');
+      log('window.UI: ' + (window.UI ? '✅' : '❌'), window.UI ? '#0f0' : '#f00');
+      log('window.Dexie: ' + (window.Dexie ? '✅' : '❌'), window.Dexie ? '#0f0' : '#f00');
+      log('lock-screen: ' + (customElements.get('lock-screen') ? '✅' : '❌'), customElements.get('lock-screen') ? '#0f0' : '#f00');
+      log('app-shell: ' + (customElements.get('app-shell') ? '✅' : '❌'), customElements.get('app-shell') ? '#0f0' : '#f00');
+      
+      const root = document.getElementById('app-root');
+      log('app-root: ' + (root ? '✅ (' + root.children.length + ' children)' : '❌ NULL'), root ? '#0f0' : '#f00');
+      
+      const lock = document.querySelector('lock-screen');
+      log('lock-screen element: ' + (lock ? 'ADA (hidden=' + lock.hidden + ')' : 'TIDAK ADA'));
+    }, 2000);
+  });
+})();
+</script>
 </body>
 </html>
