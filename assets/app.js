@@ -791,7 +791,7 @@ function route(app) {
   if (app === 'kamera') loadKamera();
   else if (app === 'pengaturan') loadPengaturan();
   else if (app === 'kalkulator') loadKalkulator();
-  else loadCatatan();
+  else if (app === ' catatan ') loadCatatan();
 }
 
 async function init() {
