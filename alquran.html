@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#6366f1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' https://api.alquran.cloud; object-src 'none'; frame-ancestors 'none';">
+<link rel="manifest" href="manifest.json">
+<title>📖 Al-Qur'an — Toko App</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root { --bg:#0f172a; --text:#fff; --text-dim:#94a3b8; --border:rgba(255,255,255,.1); --primary:#6366f1; --accent:#a855f7; }
+  html, body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:linear-gradient(135deg,var(--bg),#1e293b); color:var(--text); min-height:100vh; }
+  .topbar { display:flex; align-items:center; gap:12px; padding:16px 20px; padding-top:calc(16px + env(safe-area-inset-top,0px)); background:rgba(15,23,42,.95); position:sticky; top:0; z-index:10; border-bottom:1px solid var(--border); }
+  .back { background:rgba(255,255,255,.1); border:none; color:#fff; width:38px; height:38px; border-radius:10px; font-size:18px; cursor:pointer; }
+  .topbar h1 { font-size:18px; }
+  .search { margin:12px 20px 0; padding:12px 16px; width:calc(100% - 40px); background:rgba(255,255,255,.08); border:1px solid var(--border); border-radius:12px; color:#fff; font-size:15px; outline:none; }
+  .search::placeholder { color:#64748b; }
+  .container { padding:16px 20px 40px; }
+  .surah-list { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
+  .surah-card { display:flex; align-items:center; gap:14px; padding:14px 16px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:14px; cursor:pointer; transition:background .15s; }
+  .surah-card:active { background:rgba(255,255,255,.1); }
+  .surah-num { width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,#6366f1,#a855f7); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex-shrink:0; }
+  .surah-info { flex:1; min-width:0; }
+  .surah-name { font-size:16px; font-weight:600; margin-bottom:2px; }
+  .surah-meta { font-size:12px; color:var(--text-dim); }
+  .surah-arabic { font-size:20px; color:#a5b4fc; font-weight:500; }
+  .detail-header { text-align:center; padding:24px 20px; border-bottom:1px solid var(--border); }
+  .detail-header h2 { font-size:24px; margin-bottom:6px; }
+  .detail-header .arabic-title { font-size:28px; color:#a5b4fc; margin:12px 0; }
+  .detail-header .meta { font-size:13px; color:var(--text-dim); }
+  .ayat-list { display:flex; flex-direction:column; gap:16px; }
+  .ayat-item { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; }
+  .ayat-num { display:inline-block; width:28px; height:28px; line-height:28px; text-align:center; background:rgba(99,102,241,.2); color:#a5b4fc; border-radius:50%; font-size:12px; font-weight:700; margin-bottom:12px; }
+  .ayat-arabic { font-size:26px; line-height:1.8; text-align:right; direction:rtl; color:#fff; margin-bottom:14px; font-family:'Traditional Arabic','Amiri',serif; }
+  .ayat-latin { font-size:15px; color:#cbd5e1; line-height:1.6; margin-bottom:10px; font-style:italic; }
+  .ayat-translation { font-size:14px; color:#94a3b8; line-height:1.6; padding-top:10px; border-top:1px solid rgba(255,255,255,.06); }
+  .loading { text-align:center; color:var(--text-dim); padding:40px 0; font-size:14px; }
+  .error { text-align:center; color:#f87171; padding:40px 20px; font-size:14px; }
+  .btn-back-detail { display:inline-flex; align-items:center; gap:8px; padding:10px 20px; background:rgba(255,255,255,.1); border:none; color:#fff; border-radius:10px; font-size:14px; cursor:pointer; margin:20px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="back" onclick="location.href='index.html'">←</button>
+  <h1 id="appTitle">📖 Al-Qur'an</h1>
+</div>
+
+<div id="viewList">
+  <input class="search" id="searchInput" placeholder="🔍 Cari surah..." autocomplete="off">
+  <div class="container">
+    <div id="surahList" class="surah-list">
+      <div class="loading">Memuat daftar surah...</div>
+    </div>
+  </div>
+</div>
+
+<div id="viewDetail" style="display:none;">
+  <div id="detailContent"></div>
+</div>
+
+<script>
+'use strict';
+
+const API_BASE = 'https://api.alquran.cloud/v1';
+const $ = (s) => document.querySelector(s);
+
+let allSurahs = [];
+
+// ---------- Load daftar surah ----------
+async function loadSurahs() {
+  try {
+    const res = await fetch(API_BASE + '/surah');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    allSurahs = json.data;
+    renderSurahList(allSurahs);
+  } catch (err) {
+    console.error(err);
+    $('#surahList').innerHTML = '<div class="error">Gagal memuat. Cek koneksi internet.</div>';
+  }
+}
+
+function renderSurahList(surahs) {
+  if (!surahs.length) {
+    $('#surahList').innerHTML = '<div class="error">Surah tidak ditemukan.</div>';
+    return;
+  }
+  $('#surahList').innerHTML = surahs.map(s => `
+    <div class="surah-card" data-num="${s.number}">
+      <div class="surah-num">${s.number}</div>
+      <div class="surah-info">
+        <div class="surah-name">${escapeHtml(s.englishName)}</div>
+        <div class="surah-meta">${escapeHtml(s.englishNameTranslation)} • ${s.numberOfAyahs} ayat • ${s.revelationType === 'Meccan' ? 'Makkiyah' : 'Madaniyah'}</div>
+      </div>
+      <div class="surah-arabic">${s.name.replace('سُورَةُ ', '')}</div>
+    </div>
+  `).join('');
+
+  document.querySelectorAll('.surah-card').forEach(card => {
+    card.addEventListener('click', () => loadSurahDetail(card.dataset.num));
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- Load detail surah ----------
+async function loadSurahDetail(num) {
+  $('#viewList').style.display = 'none';
+  $('#viewDetail').style.display = 'block';
+  $('#detailContent').innerHTML = '<div class="loading">Memuat ayat...</div>';
+
+  try {
+    // Ambil Arabic + transliteration + translation Indonesia
+    const [arabicRes, latinRes, idRes] = await Promise.all([
+      fetch(API_BASE + '/surah/' + num + '/ar.alafasy'),
+      fetch(API_BASE + '/surah/' + num + '/en.transliteration'),
+      fetch(API_BASE + '/surah/' + num + '/id.indonesian')
+    ]);
+
+    if (!arabicRes.ok || !idRes.ok) throw new Error('HTTP error');
+
+    const arabic = (await arabicRes.json()).data;
+    const latin = (await latinRes.json()).data;
+    const indo = (await idRes.json()).data;
+
+    renderDetail(arabic, latin, indo);
+  } catch (err) {
+    console.error(err);
+    $('#detailContent').innerHTML = '<div class="error">Gagal memuat surah. Coba lagi.</div>';
+  }
+}
+
+function renderDetail(arabic, latin, indo) {
+  const ayahs = arabic.ayahs.map((a, i) => ({
+    num: a.numberInSurah,
+    arabic: a.text,
+    latin: latin.ayahs[i] ? latin.ayahs[i].text : '',
+    translation: indo.ayahs[i] ? indo.ayahs[i].text : ''
+  }));
+
+  const html = `
+    <button class="btn-back-detail" onclick="backToList()">← Kembali ke daftar</button>
+    <div class="detail-header">
+      <h2>${escapeHtml(indo.englishName || arabic.englishName)}</h2>
+      <div class="arabic-title">${arabic.name}</div>
+      <div class="meta">${escapeHtml(indo.englishNameTranslation)} • ${arabic.numberOfAyahs} ayat • ${arabic.revelationType === 'Meccan' ? 'Makkiyah' : 'Madaniyah'}</div>
+    </div>
+    <div class="container">
+      <div class="ayat-list">
+        ${ayahs.map(a => `
+          <div class="ayat-item">
+            <div class="ayat-num">${a.num}</div>
+            <div class="ayat-arabic">${escapeHtml(a.arabic)}</div>
+            ${a.latin ? `<div class="ayat-latin">${escapeHtml(a.latin)}</div>` : ''}
+            ${a.translation ? `<div class="ayat-translation">${escapeHtml(a.translation)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  $('#detailContent').innerHTML = html;
+  window.scrollTo(0, 0);
+}
+
+function backToList() {
+  $('#viewList').style.display = 'block';
+  $('#viewDetail').style.display = 'none';
+}
+
+// ---------- Search ----------
+$('#searchInput').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  if (!q) {
+    renderSurahList(allSurahs);
+    return;
+  }
+  const filtered = allSurahs.filter(s =>
+    s.englishName.toLowerCase().includes(q) ||
+    s.englishNameTranslation.toLowerCase().includes(q) ||
+    String(s.number) === q
+  );
+  renderSurahList(filtered);
+});
+
+// ---------- Init ----------
+loadSurahs();
+</script>
+</body>
+</html>
