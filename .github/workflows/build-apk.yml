@@ -15,7 +15,6 @@ env:
   ANDROID_SDK_ROOT: /home/runner/android-sdk
   ANDROID_HOME: /home/runner/android-sdk
   CMDLINE_TOOLS_VERSION: '11076708'
-  GRADLE_HOME: /opt/gradle
 
 jobs:
   build:
@@ -54,7 +53,7 @@ jobs:
           sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
           echo "✅ SDK packages installed"
 
-      - name: 🎯 Install Gradle ${{ env.GRADLE_VERSION }} (Override System)
+      - name: 🎯 Install Gradle ${{ env.GRADLE_VERSION }} (untuk wrapper)
         run: |
           set -e
           echo "📥 Downloading Gradle ${{ env.GRADLE_VERSION }}..."
@@ -63,27 +62,12 @@ jobs:
           sudo unzip -q gradle.zip -d /opt
           sudo mv /opt/gradle-${GRADLE_VERSION} /opt/gradle
           sudo chmod +x /opt/gradle/bin/gradle
-          
-          # Verify
           /opt/gradle/bin/gradle --version
-          
-          echo "🗑️ Removing system Gradle 9.x to force 8.7..."
-          sudo rm -rf /usr/share/gradle-* || true
-          sudo rm -f /usr/bin/gradle || true
-          sudo rm -f /usr/local/bin/gradle || true
-          
-          # Symlink /usr/local/bin/gradle → /opt/gradle/bin/gradle
-          sudo ln -sf /opt/gradle/bin/gradle /usr/local/bin/gradle
-          
-          echo "🔍 Which gradle:"
-          which gradle
-          gradle --version
 
       - name: 🔧 Install Cordova
         run: |
           npm install -g cordova@${{ env.CORDOVA_VERSION }}
           cordova --version
-          echo "✅ Cordova installed"
 
       - name: 🔐 Restore Keystore
         env:
@@ -155,7 +139,6 @@ jobs:
               <preference name="GradlePluginKotlinEnabled" value="false" />
               <preference name="GradlePluginGoogleServicesEnabled" value="false" />
               <preference name="AndroidGradlePluginVersion" value="8.1.4" />
-              <preference name="GradleVersion" value="${{ env.GRADLE_VERSION }}" />
           </widget>
           XMLEOF
           
@@ -166,7 +149,6 @@ jobs:
           <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-              <meta http-equiv="Content-Security-Policy" content="default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: gap:">
               <title>Toko App</title>
               <style>
                   html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#0f172a; }
@@ -215,43 +197,37 @@ jobs:
           cp build-extras.gradle platforms/android/app/build-extras.gradle
           echo "✅ build-extras.gradle placed"
 
-      - name: 📝 Force Gradle Version (Wrapper)
+      - name: 📝 Setup Gradle Wrapper (Force 8.7)
         run: |
           cd /tmp/tokoapp/platforms/android
-          mkdir -p gradle/wrapper
-          cat > gradle/wrapper/gradle-wrapper.properties << 'WRAPPEREOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
-          networkTimeout=10000
-          validateDistributionUrl=true
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          WRAPPEREOF
-          echo "✅ Wrapper set to 8.7"
+          
+          # Buat gradle wrapper pakai Gradle 8.7
+          /opt/gradle/bin/gradle wrapper --gradle-version 8.7 --distribution-type bin
+          
+          echo "✅ Wrapper generated"
+          ls -la gradle/wrapper/
           cat gradle/wrapper/gradle-wrapper.properties
+          
+          # Verify gradlew executable
+          chmod +x gradlew
 
-      - name: 🔨 Build APK (Cordova)
+      - name: 🔨 Build APK (Pakai gradlew Langsung)
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          GRADLE_USER_HOME: /tmp/gradle-home
-          GRADLE_HOME: /opt/gradle
         run: |
-          # PATH: prioritaskan /opt/gradle/bin paling depan
-          export PATH="/opt/gradle/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          cd /tmp/tokoapp/platforms/android
           
-          echo "🔍 Which gradle:"
-          which gradle
-          gradle --version
+          echo "🔍 Verifying gradlew version..."
+          ./gradlew --version
           
-          cd /tmp/tokoapp
-          echo "🔨 Building APK with Cordova..."
-          cordova build android --release -- --packageType=apk
+          echo "🔨 Building APK via gradlew assembleRelease..."
+          ./gradlew assembleRelease --stacktrace --no-daemon
           
           echo "📦 APK files found:"
-          find platforms/android -name "*.apk" -type f
+          find . -name "*.apk" -type f
 
       - name: 📦 Prepare output
         if: success()
